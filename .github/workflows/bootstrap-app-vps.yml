@@ -1,0 +1,118 @@
+name: Bootstrap App VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_mode:
+        description: "Run local validation, remote check mode, or apply changes"
+        required: true
+        type: choice
+        default: syntax
+        options:
+          - syntax
+          - check
+          - apply
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Validate Ansible files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: python -m pip install ansible-core==2.18.6
+
+      - name: Validate inventory and playbook
+        shell: bash
+        env:
+          EXECUTION_MODE: ${{ inputs.execution_mode }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          ansible-inventory \
+            -i ansible/inventory/development/hosts.yml \
+            --graph
+
+          playbook=ansible/playbooks/bootstrap-vps/bootstrap-app-vps.yml
+          if [[ ! -s "$playbook" ]]; then
+            if [[ "$EXECUTION_MODE" == "syntax" ]]; then
+              echo "::warning::The app bootstrap playbook is empty; playbook syntax validation is deferred."
+              exit 0
+            fi
+            echo "::error::Populate $playbook before selecting check or apply mode."
+            exit 1
+          fi
+
+          ansible-playbook \
+            -i ansible/inventory/development/hosts.yml \
+            "$playbook" \
+            --syntax-check
+
+  bootstrap:
+    name: Bootstrap development app servers
+    needs: preflight
+    if: ${{ inputs.execution_mode != 'syntax' }}
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: python -m pip install ansible-core==2.18.6
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VPS_SSH_PRIVATE_KEY" ]]; then
+            echo "::error::Set the VPS_SSH_PRIVATE_KEY secret for the development environment."
+            exit 1
+          fi
+          if [[ -z "$VPS_KNOWN_HOSTS" ]]; then
+            echo "::error::Set VPS_KNOWN_HOSTS to independently verified SSH host keys."
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Run Ansible
+        shell: bash
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+          EXECUTION_MODE: ${{ inputs.execution_mode }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$EXECUTION_MODE" == "check" ]]; then
+            args+=(--check)
+          fi
+
+          ansible-playbook \
+            -i ansible/inventory/development/hosts.yml \
+            ansible/playbooks/bootstrap-vps/bootstrap-app-vps.yml \
+            --limit app_servers \
+            --private-key "$HOME/.ssh/id_ed25519" \
+            "${args[@]}"
