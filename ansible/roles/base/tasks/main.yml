@@ -1,0 +1,1 @@
+# In this base, it should include SSH injection into the new VPS. The new VPS only provide username and password authentication, so for the first time connect to the new VPS should use the provided username and password to establish the initial connection and then inject the SSH key for future key-based authentication.
