@@ -1,0 +1,16 @@
+---
+- name: Validate SSH public key input
+  ansible.builtin.assert:
+    that:
+      - ssh_public_key is string
+      - ssh_public_key | trim | length > 0
+      - ssh_authorized_key_user | string | length > 0
+    fail_msg: "Set ssh_public_key and ensure ansible_user identifies the existing VPS login account."
+
+- name: Install SSH public key for the existing Ansible login user
+  become: false
+  ansible.posix.authorized_key:
+    user: "{{ ssh_authorized_key_user }}"
+    key: "{{ ssh_public_key | trim }}"
+    state: present
+    manage_dir: true

@@ -1,0 +1,8 @@
+---
+security_packages:
+  - apparmor
+  - auditd
+security_services:
+  - apparmor
+  - auditd
+security_apt_cache_valid_time: 3600
