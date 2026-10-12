@@ -63,7 +63,7 @@ Before firewall changes, keep an existing administrative session open and confir
 
 ## Practical checkpoint
 
-Complete [Task 02 — Prove DNS, firewall, and origin preconditions](../tasks/02-prove-dns-firewall-and-origin-preconditions.md) before requesting a public certificate.
+Complete [Task 02 — Prove DNS, firewall, and upstream preconditions](../tasks/02-prove-dns-firewall-and-origin-preconditions.md) before requesting a public certificate.
 
 ## References
 

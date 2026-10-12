@@ -22,6 +22,8 @@ Enforce key-based, non-root administrative SSH access, verify the effective daem
    sudo sshd -T | grep -E '^(pubkeyauthentication|passwordauthentication|permitrootlogin|maxauthtries|port) '
    ```
 
+   If applicable `Match` blocks are present, also evaluate the intended login context with `sudo sshd -T -C user=ADMIN_USER,addr=CLIENT_ADDRESS,host=CLIENT_HOST`; include the connection values required by those blocks.
+
 5. Keep the current session open. Reload the actual SSH unit only after syntax validation, then use a second terminal to reconnect with the intended key. Confirm `sudo` still works before closing the original session.
 6. If Fail2ban is appropriate, confirm its package and logging backend, configure its SSH jail using a supported local override, run `sudo fail2ban-client -t`, enable it, and verify `sudo fail2ban-client status sshd`. Do not deliberately trigger bans from your only admin address.
 7. Record recovery steps for removing an accidental ban or restoring a known-good SSH configuration using the provider console.

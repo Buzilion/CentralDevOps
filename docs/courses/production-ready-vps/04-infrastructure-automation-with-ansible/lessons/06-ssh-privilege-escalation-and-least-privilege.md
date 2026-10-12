@@ -43,4 +43,4 @@ Subject 2 contains the detailed SSH and firewall hardening procedure. Ansible sh
 
 ## Practical checkpoint
 
-Complete [Task 02 — Create an inventory and prove SSH connectivity](../tasks/02-create-an-inventory-and-prove-ssh-connectivity.md), then review access before Task 06.
+Complete [Task 02 — Create an inventory and prove SSH connectivity](../tasks/02-create-an-inventory-and-prove-ssh-connectivity.md), then review access before [Task 06 — Apply the reviewed baseline to the VPS safely](../tasks/06-apply-the-reviewed-baseline-to-the-vps-safely.md).

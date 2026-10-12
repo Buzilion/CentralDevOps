@@ -25,7 +25,7 @@ This illustrates structure only. `base_required_packages` must be defined, revie
 
 Prefer fully qualified collection names, such as `ansible.builtin.package`, over short ambiguous module names. Modules understand resources and desired states: packages can be `present`, a service can be `started` and `enabled`, a file can have a specific owner and mode. These operations communicate intent and are generally easier to make repeatable than shell snippets.
 
-Use `ansible.builtin.command` for a command that genuinely has no suitable module; it does not interpret shell operators or pipes. Use `ansible.builtin.shell` only when shell behavior is required and inputs are controlled. A command that reports success may still make a different change each time. Where supported, use a module's `creates`, `removes`, or explicit `changed_when`/`failed_when` controls carefully. These declarations change Ansible's reporting; they do not magically make an operation safe or reversible.
+Use `ansible.builtin.command` for a command that genuinely has no suitable module; it does not interpret shell operators or pipes. Use `ansible.builtin.shell` only when shell behavior is required and inputs are controlled. A command that reports success may still make a different change each time. Where supported, use `creates` or `removes` with `command`/`shell` tasks, and define `changed_when`/`failed_when` to match the command's real behavior. These controls affect execution or reporting; they do not make an operation safe or reversible. For example, `changed_when: false` on a mutating command hides its changed status, so repeated work can look like a no-op; it does not, by itself, change whether a nonzero exit fails the task.
 
 ## Facts and conditionals
 

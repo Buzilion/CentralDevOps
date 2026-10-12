@@ -7,7 +7,7 @@ Make a documented go/no-go decision on whether the VPS application can be operat
 ## Prerequisites
 
 - Complete Tasks 01–07 and review [Lesson 08 — Reliability exercises and continuous improvement](../lessons/08-reliability-exercises-and-continuous-improvement.md).
-- Gather the service contract, deployment and rollback evidence, health/restart test, failure matrix, capacity budget, backup/restore report, monitoring/alert evidence, maintenance/access review, and production checklist.
+- Gather the operating contract, deployment and rollback evidence, health/restart test, failure matrix, capacity budget, backup/restore report, monitoring/alert evidence, maintenance/access review, and production checklist.
 
 ## Procedure
 
@@ -19,7 +19,7 @@ Make a documented go/no-go decision on whether the VPS application can be operat
 6. For each control, record **pass**, **fail**, or **not applicable with rationale**; cite a sanitized evidence location, owner, and review date. Do not mark undocumented assumptions as pass.
 7. Classify blockers by user impact, exploitability, data-loss risk, and recovery difficulty. Assign each blocker an owner and due date. Record residual risks accepted by the authorized owner.
 8. Make an explicit go/no-go recommendation. A no-go is a valid result. If go, define expiry/re-review triggers such as architecture, provider, database, credential, or monitoring changes.
-9. Store the signed or attributable review outside the VPS and update the readiness checklist only for evidence that exists.
+9. Store the signed or attributable review outside the VPS and update the production checklist only for evidence that exists.
 
 ## Acceptance criteria
 

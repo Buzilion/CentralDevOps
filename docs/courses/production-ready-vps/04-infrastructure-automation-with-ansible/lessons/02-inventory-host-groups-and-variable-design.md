@@ -47,7 +47,7 @@ A useful separation is:
 - **Vault-encrypted variables:** secret values, never ordinary plaintext vars.
 - **Command-line overrides:** deliberate short-lived overrides, recorded in the run evidence.
 
-Do not place secrets in `ansible.cfg`, inventory, ordinary `group_vars`/`host_vars`, shell history, or `-e password=...`. Variables are not secret just because their name includes `secret`.
+Do not place secrets in `ansible.cfg`, inventory, ordinary `group_vars`/`host_vars`, shell history, or command-line `-e` values. A variable is not secret just because its name includes `secret`.
 
 ## Keep configuration local and understandable
 

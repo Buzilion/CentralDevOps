@@ -25,9 +25,9 @@ Avoid backing up everything indiscriminately. Caches and temporary files can was
 
 ## RPO: how much data can be lost?
 
-The RPO is the maximum acceptable age of the last recoverable state at the time service is restored. It is a business and product decision, not a property automatically granted by running a nightly job. A daily backup can imply nearly a day of data loss, and the actual gap can be longer if the last successful run failed or a restore point is corrupt.
+The RPO is the maximum amount of recent data the service can afford to lose, expressed as the gap between a data-loss event and the newest usable recovery point before it. It is a business and product decision, not a property automatically granted by running a nightly job. A daily backup can imply nearly a day of data loss, and the actual gap can be longer if the last successful run failed or a restore point is corrupt.
 
-Some systems can accept scheduled snapshots. Others need more frequent snapshots or database transaction-log/WAL/binlog archiving to reconstruct a point in time. Continuous recovery is more complex: archive completeness, ordering, retention, compatible base backups, and a tested replay procedure are all required. Do not promise point-in-time recovery because logs are enabled; demonstrate that the required chain exists and replays.
+Some systems can accept scheduled snapshots. Others need more frequent snapshots or database transaction-log archiving — for example PostgreSQL's write-ahead log (WAL) or MySQL's binary log (binlog) — to reconstruct a point in time. Continuous recovery is more complex: archive completeness, ordering, retention, compatible base backups, and a tested replay procedure are all required. Do not promise point-in-time recovery because logs are enabled; demonstrate that the required chain exists and replays.
 
 ## RTO: how long can recovery take?
 

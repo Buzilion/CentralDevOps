@@ -17,7 +17,7 @@ Produce a concise monitoring contract for the actual deployed application: criti
 3. List the critical user journeys or service promises. Separate core functionality from optional features and administrative functions. Do not place credentials or customer data in the inventory.
 4. For each critical behavior, define one or more candidate SLIs. Specify the measurement point, numerator/denominator or precise check, excluded cases, collection source, time window, unit, and what missing data means.
 5. Agree on an initial SLO or explicit baseline period for availability and, if meaningful, latency. Record the owner, target window, measurement assumptions, and date reviewed. An unapproved target must remain a proposal, not be presented as a commitment.
-6. Inventory host, application, dependency, backup, certificate, and monitoring-path signals. Record source, freshness, expected collection interval, retention, owner, access boundary, and blind spot for each.
+6. Inventory host, application, dependency, backup, certificate, and monitoring-path signals. Record source, freshness, expected collection interval, retention, signal owner, access boundary, and blind spot for each.
 7. Rank failure conditions by user impact and urgency. Identify which require immediate notification, which belong on a dashboard, and which can be reviewed periodically. Note a first safe action and response owner for each candidate alert.
 8. Record constraints: VPS size, provider monitoring options, public routes, available notification channels, budget, privacy restrictions, telemetry retention, and who can access the evidence.
 9. Review the draft with the application/service owner. Resolve ambiguity or document an owner and due date for each unresolved design decision.
@@ -26,7 +26,7 @@ Produce a concise monitoring contract for the actual deployed application: criti
 
 - [ ] The contract describes the actual, inspected request and dependency path; assumptions and unknowns are labelled.
 - [ ] At least one user-facing availability SLI and a meaningful latency or failure indicator are specified, or the reason a candidate does not apply is recorded.
-- [ ] Every indicator has a source, measurement definition, unit/window, owner, freshness expectation, and interpretation of missing data.
+- [ ] Every indicator has a source, measurement definition, unit/window, signal owner, freshness expectation, and interpretation of missing data.
 - [ ] Any SLO is approved, measurable, and tied to an explicit time window; unapproved proposals are clearly marked.
 - [ ] The design includes both independent external detection and internal/host diagnosis, with their different blind spots.
 - [ ] Candidate alert conditions are tied to user impact or a defined operational action rather than arbitrary copied thresholds.

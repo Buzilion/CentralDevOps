@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Produce a concise, reviewed operations contract that states who operates the service, what users can expect, what is covered, and how routine maintenance and escalation are handled.
+Produce a concise, reviewed operating contract that states who operates the service, what users can expect, what is covered, and how routine maintenance and escalation are handled.
 
 ## Prerequisites
 
@@ -32,4 +32,4 @@ Produce a concise, reviewed operations contract that states who operates the ser
 
 ## Deliverable
 
-A dated **service operating contract and maintenance calendar** linked from the production runbook.
+A dated **operating contract and maintenance calendar** linked from the production runbook.

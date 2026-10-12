@@ -25,7 +25,7 @@ Prove from an external client that the real hostname serves the intended app ove
 - [ ] DNS, TCP reachability, TLS validation, HTTP routing, and application health are recorded as separate results.
 - [ ] No insecure TLS verification bypass is used to claim HTTPS success.
 - [ ] IPv4 and IPv6 results are represented independently when applicable.
-- [ ] The origin app and database ports are externally unreachable.
+- [ ] The upstream app and database ports are externally unreachable.
 - [ ] Required page/API/static/realtime paths behave as specified; inapplicable routes are marked.
 - [ ] Controlled upstream failure produces a diagnosable non-success response and recovery is demonstrated.
 - [ ] Evidence is sanitized and sufficient for another operator to reproduce.

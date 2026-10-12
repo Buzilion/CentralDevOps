@@ -76,7 +76,13 @@ Avoid persistent root shells for routine work. If one is necessary for a careful
 
 ## A safe account-change sequence
 
-When preparing an additional administrator, first confirm an alternate path to the server (provider console or documented recovery method). Create the account and grant only required privileges; install its authorized public key using a trusted process; open a second session; verify the account identity, sudo access, and ability to recover. Do not remove the existing working access until the replacement is proven in a separate session.
+When preparing an additional administrator:
+
+1. Confirm an alternate path to the server (provider console or documented recovery method).
+2. Create the account and grant only required privileges.
+3. Install its authorized public key using a trusted process.
+4. Open a second session and verify the account identity, sudo access, and ability to recover.
+5. Do not remove the existing working access until the replacement is proven in that separate session.
 
 This lesson does not disable root login, alter SSH authentication policy, or choose firewall rules. Those decisions belong to the networking/security subject and must be coordinated with a tested recovery path.
 

@@ -77,7 +77,7 @@ docker compose config --quiet
 docker compose config
 ```
 
-The rendered output may include resolved values; do not paste it into a public ticket if it contains secrets. Review the exact project directory and project name: Compose uses those to determine which containers, networks, and volumes a command targets.
+`--quiet` only validates the file and exits non-zero on error; the plain form also prints the fully rendered configuration for review. The rendered output may include resolved values; do not paste it into a public ticket if it contains secrets. Review the exact project directory and project name: Compose uses those to determine which containers, networks, and volumes a command targets.
 
 ## Compose operations
 

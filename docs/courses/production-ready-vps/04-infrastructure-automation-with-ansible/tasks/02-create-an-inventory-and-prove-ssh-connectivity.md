@@ -21,7 +21,13 @@ Create an explicit project-local inventory for the intended VPS and prove Ansibl
    ansible production --list-hosts -i inventory/production/hosts.yml
    ```
 
-5. Run the Ansible ping module against the single intended alias using the selected SSH account and key. Verify the result shows a successful module response. Run a fact-gathering command only if authorized, and inspect only the minimum required facts.
+5. Run the Ansible ping module against the single intended alias using the selected SSH account and key:
+
+   ```sh
+   ansible app_vps -i inventory/production/hosts.yml -m ansible.builtin.ping
+   ```
+
+   Confirm it returns `pong`, which demonstrates Ansible module connectivity over SSH. Run a fact-gathering command only if authorized, and inspect only the minimum required facts.
 6. Confirm the login account is non-root. Separately verify whether it can use the approved `sudo` policy; do not add broad privileges merely to make a connectivity test succeed.
 7. Record sanitized commands and outcomes. Keep raw inventory, IPs, hostnames, usernames, verbose SSH traces, and fact dumps private.
 

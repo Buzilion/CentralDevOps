@@ -23,8 +23,14 @@ Configure a default-deny inbound host firewall and align provider firewall rules
    ```
 
 2. In the provider control panel, review the current inbound/outbound firewall policy and identify how to restore it through the console.
-3. Decide the minimal required inbound entries from Task 01. Add the actual SSH TCP port/source before enabling UFW. If SSH uses the packaged profile, confirm `OpenSSH` exists before using it.
-4. Set default incoming deny and the currently justified outbound policy. Retain required provider control-plane services and application dependencies; do not block outbound traffic without understanding impact.
+3. Decide the minimal required inbound entries from Task 01. Add the actual SSH TCP port/source before enabling UFW. If the reviewed source policy permits the packaged profile's scope, confirm `OpenSSH` exists with `sudo ufw app list`, then add it with `sudo ufw allow OpenSSH`. For a stable, approved administrator range, an explicit rule for the verified SSH port looks like:
+
+   ```sh
+   sudo ufw allow proto tcp from ADMIN_CIDR to any port SSH_PORT
+   ```
+
+   Replace both placeholders with the verified values; do not guess the port or use an unreviewed broad source range.
+4. Set the inbound default to deny with `sudo ufw default deny incoming`. Keep outbound traffic at the reviewed policy; for the common default-allow policy, use `sudo ufw default allow outgoing`. Retain required provider control-plane services and application dependencies; do not block outbound traffic without understanding impact.
 5. Review `sudo ufw status numbered`, then enable UFW only after confirming the SSH rule and recovery route. Keep the original session open and establish a second SSH session.
 6. Add HTTP/HTTPS rules only if they are intentionally needed now; otherwise leave them closed until the reverse proxy phase. Ensure IPv6 rules are represented when IPv6 is enabled.
 7. Align provider rules with the same intended exposure and document differences that are deliberate.

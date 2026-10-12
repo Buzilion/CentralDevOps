@@ -57,7 +57,7 @@ Independent source checks public behavior
 
 If the collector, rule evaluator, and notifications all run on the monitored VPS, a host crash can remove both the service and its evidence of failure. A local agent can still collect useful host telemetry during normal operation, but add a provider-level monitor or an external uptime check and route critical alerts through an independently reachable service. Consider how loss of Internet access, credentials, DNS, or the notification provider affects this chain.
 
-Each signal needs a source, timestamp, owner, useful retention period, and defined behavior when missing. Stale data must not look like healthy zero. Alert on missing telemetry when its absence prevents a critical decision. Keep a deliberate list of blind spots: for example, an external check sees public behavior but cannot identify a disk bottleneck; host metrics can show disk pressure but cannot prove that a user can sign in.
+Each signal needs a source, timestamp, named owner for its source and collection path, useful retention period, and defined behavior when missing. Name the alert responder separately; on a small service, the same person may hold both roles. Stale data must not look like healthy zero. Alert on missing telemetry when its absence prevents a critical decision. Keep a deliberate list of blind spots: for example, an external check sees public behavior but cannot identify a disk bottleneck; host metrics can show disk pressure but cannot prove that a user can sign in.
 
 ## Keep the design proportionate to a single VPS
 

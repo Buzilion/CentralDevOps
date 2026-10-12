@@ -13,7 +13,7 @@ Recover a selected encrypted off-site point into a clean, isolated target, valid
 ## Procedure
 
 1. Schedule and announce the exercise. Define the simulated outage time, the incident lead, stop conditions, permitted data, test network, and method to prevent outbound email, billing, webhooks, or scheduled jobs.
-2. Start the RTO clock at the agreed recovery declaration point. Provision a clean target or record which provisioning time is excluded. Confirm it cannot receive public traffic accidentally.
+2. Measure end-to-end RTO from the agreed simulated outage time, including detection, decision, and clean-target provisioning when they are part of the approved objective. If the drill starts at recovery declaration or uses a pre-provisioned target, record excluded intervals separately and label the measured duration as a partial benchmark, not the full RTO. Confirm the target cannot receive public traffic accidentally.
 3. Select a specific remote restore point. Record its identity and timestamp; retrieve it using the documented recovery identity, verify integrity, and recover the encryption key through its separate documented path.
 4. Restore database and companion files using the documented tool/version/order. Keep all data in the isolated target. Capture safe command results; redact credentials and record values.
 5. Validate storage state: engine restore/consistency result, required schema or migration version, representative non-sensitive record checks, required file presence, and cross-references where safe.

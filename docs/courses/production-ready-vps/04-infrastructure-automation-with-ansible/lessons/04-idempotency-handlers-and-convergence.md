@@ -60,4 +60,4 @@ A nonzero `changed` count is not automatically a defect: the first convergence i
 
 ## Practical checkpoint
 
-Complete [Task 03 — Build and verify an idempotent baseline playbook](../tasks/03-build-and-verify-an-idempotent-baseline-playbook.md), then use the repeated-run evidence in Task 07.
+Complete [Task 03 — Build and verify an idempotent baseline playbook](../tasks/03-build-and-verify-an-idempotent-baseline-playbook.md), then use the repeated-run evidence in [Task 07 — Prove idempotence, drift correction, and fresh-host reproducibility](../tasks/07-prove-idempotence-drift-correction-and-fresh-host-reproducibility.md).

@@ -19,7 +19,7 @@ Create a protected candidate backup for each important data class using a docume
 5. Check the capture process exit status. Verify expected artifact identity, time, plausible nonzero size, permissions, format, and any engine/tool integrity check. Preserve the previous known-good artifact until the replacement passes validation.
 6. Use the native listing or inspection tool to read the artifact. In an isolated test target, restore a small representative backup or database dump to a new empty location and confirm the engine accepts it. Do not restore over an existing database.
 7. Record tool/engine versions, capture time boundary, consistency method, validation results, duration, and any exclusions. Redact real row contents, credentials, and identifying infrastructure details.
-8. Securely remove temporary plaintext artifacts when no longer required, following the data-handling policy. Confirm that the only surviving copy is not accidentally the temporary staging copy.
+8. Before removing temporary plaintext artifacts, confirm that a validated backup remains in the approved protected location; do not treat the staging files as the only recovery copy. Securely remove the temporary files according to the data-handling policy.
 
 ## Acceptance criteria
 

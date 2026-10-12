@@ -20,7 +20,7 @@ Each transition needs evidence. A release has an identifiable version and a resu
 
 ## Establish an operating contract
 
-Write a short service contract before choosing alert thresholds or promising uptime. It should state:
+Write a short operating contract before choosing alert thresholds or promising uptime. It should state:
 
 - The service and environment covered, its users, business-critical operations, and service owner.
 - The public access path and critical dependencies, including which dependencies are outside your control.

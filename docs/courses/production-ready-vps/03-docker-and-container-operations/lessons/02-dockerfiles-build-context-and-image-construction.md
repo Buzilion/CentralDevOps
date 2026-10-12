@@ -39,6 +39,7 @@ Good image construction aims for:
 - Only runtime files and required runtime dependencies in the final image.
 - A multi-stage build when compilation or tooling is not needed at runtime.
 - Explicit, reviewed base-image versions; avoid an unqualified or moving `latest` as the only release identity.
+- Awareness of the image's target CPU architecture (for example `amd64` or `arm64`), confirmed against the deployment host; Lesson 03 covers why this matters for a successful pull and run.
 - A small and intentional build context.
 - Deterministic dependency installation using the project's lockfiles and supported build commands.
 - A clear process, working directory, and signal handling so the application can stop gracefully.
@@ -72,7 +73,7 @@ docker image inspect IMAGE:VERSION
 docker history --no-trunc IMAGE:VERSION
 ```
 
-Inspect image metadata and layer history for unexpected commands, environment values, files, or large layers. These commands are diagnostic aids, not a complete security audit or vulnerability scan. Run the project's tests and an application smoke test in a private, controlled environment before considering the image deployable.
+`--no-trunc` prints each layer's full build command instead of a shortened one, so an unexpected instruction is not hidden by column width. Inspect image metadata and layer history for unexpected commands, environment values, files, or large layers. These commands are diagnostic aids, not a complete security audit or vulnerability scan. Run the project's tests and an application smoke test in a private, controlled environment before considering the image deployable.
 
 ## Build-time supply chain
 

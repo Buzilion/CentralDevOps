@@ -48,6 +48,8 @@ A useful runbook contains:
 
 Keep procedures specific enough for another operator but avoid embedding credentials or commands that destroy data without a confirmation step. Link to the existing deployment and recovery procedures instead of maintaining conflicting copies. Rehearse the runbook when the architecture changes and periodically when team readiness matters.
 
+During a live incident, an operator handoff must transfer context, not just a runbook link: state the current impact and last verified time, actions tried and their results, unresolved risks or approvals, the next owner, and the next update time. The receiving operator should acknowledge responsibility.
+
 ## Treat telemetry failures as incidents too
 
 Alert on collection gaps, stale samples, failed integrations, and unavailable dashboards only where they create a material blind spot. Document an alternate way to check the VPS and public service if the monitoring provider is unavailable. If both service and telemetry depend on the same host, use the provider console or another independent path to regain visibility.

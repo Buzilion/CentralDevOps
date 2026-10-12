@@ -18,7 +18,7 @@ Use a real domain only when you control it and can change its DNS. Replace every
 ## Hands-on tasks
 
 - [ ] [Task 01 — Define the application-serving contract and traffic design](tasks/01-define-the-application-serving-contract-and-traffic-design.md)
-- [ ] [Task 02 — Prove DNS, firewall, and origin preconditions](tasks/02-prove-dns-firewall-and-origin-preconditions.md)
+- [ ] [Task 02 — Prove DNS, firewall, and upstream preconditions](tasks/02-prove-dns-firewall-and-origin-preconditions.md)
 - [ ] [Task 03 — Configure a minimal reverse proxy and prove private upstream access](tasks/03-configure-a-minimal-reverse-proxy-and-prove-private-upstream-access.md)
 - [ ] [Task 04 — Issue and verify a production TLS certificate](tasks/04-issue-and-verify-a-production-tls-certificate.md)
 - [ ] [Task 05 — Configure application routes, headers, and bounded request behavior](tasks/05-configure-application-routes-headers-and-bounded-request-behavior.md)
@@ -39,4 +39,4 @@ Use a real domain only when you control it and can change its DNS. Replace every
 
 ## Exit criteria
 
-The application is reachable at its intended domain over valid HTTPS, the proxy routes requests to the intended private upstream, and no unnecessary origin port is publicly exposed. An operator can validate and safely reload the proxy, diagnose a failed request, and confirm how certificate renewal and configuration recovery work. Proceed to **Data Persistence, Backup, and Recovery** only after this serving boundary is understood and its operational evidence is recorded.
+The application is reachable at its intended domain over valid HTTPS, the proxy routes requests to the intended private upstream, and no unnecessary upstream port is publicly exposed. An operator can validate and safely reload the proxy, diagnose a failed request, and confirm how certificate renewal and configuration recovery work. Proceed to **Data Persistence, Backup, and Recovery** only after this serving boundary is understood and its operational evidence is recorded.

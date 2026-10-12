@@ -20,7 +20,7 @@ Use a reviewed Compose definition to start the application and only its required
 5. Validate and inspect the effective Compose configuration (`docker compose config --quiet`, then review the rendered configuration locally for secret values). Do not share rendered output containing credentials.
 6. Start the named project with `docker compose up -d`. Inspect `docker compose ps`, health status, `docker compose logs --tail=100 SERVICE`, `docker stats --no-stream`, and `sudo ss -lntup`.
 7. Test the application on its intended private path. If a host mapping is necessary only for local smoke testing, bind it to `127.0.0.1` and remove it after the test. Do not open provider/host firewall rules or publish a public listener as a shortcut.
-8. Stop/recreate the stack once using the documented Compose workflow, then confirm the desired configuration is still applied and the service returns to its healthy state.
+8. In a non-production environment or an approved maintenance window, recreate the services from the same project with `docker compose up -d --force-recreate`; this briefly interrupts service. Confirm the desired configuration is applied and the services return to their expected healthy state.
 
 ## Acceptance criteria
 

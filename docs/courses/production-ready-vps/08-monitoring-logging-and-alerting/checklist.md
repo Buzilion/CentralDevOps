@@ -27,7 +27,7 @@ Monitoring is an operational control, not a dashboard installation exercise. Dec
 
 ## Subject completion gate
 
-- [ ] A service inventory names each critical component, signal source, owner, dependency, and monitoring blind spot; unknowns are explicit.
+- [ ] A service inventory names each critical component and its dependencies; each signal has a source, owner, and known blind spot; unknowns are explicit.
 - [ ] Availability, latency, and recovery expectations are measurable, have an agreed observation window, and distinguish user impact from machine symptoms.
 - [ ] CPU, memory, disk space and inodes, network/listener state, host uptime, and application health are visible with timestamps and useful context.
 - [ ] Application health checks distinguish process liveness from readiness, avoid leaking internal details, and have tested behavior when a dependency is unavailable.

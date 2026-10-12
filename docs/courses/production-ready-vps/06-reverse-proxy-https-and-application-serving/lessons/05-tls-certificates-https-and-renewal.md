@@ -15,7 +15,7 @@ The certificate's public chain is served to clients; its private key must remain
 Automated Certificate Management Environment (ACME) clients prove control of a domain before issuance:
 
 - **HTTP-01** serves a challenge under the hostname over port 80. DNS must resolve to the validation endpoint and inbound HTTP must reach the ACME client/proxy. The challenge route must not be blocked by an unrelated redirect or auth rule. HTTP-01 does not issue wildcard certificates.
-- **TLS-ALPN-01** proves control using a special TLS exchange on port 443. It requires the ACME client to receive the challenge traffic appropriately.
+- **TLS-ALPN-01** proves control with a special TLS handshake on port 443, not an HTTP request. The challenge must reach a component configured with the ACME challenge state—often the ACME client or a proxy integrated with it. If the proxy already owns port 443, verify that the client and proxy coordinate this challenge; otherwise the client may not be able to answer on the required listener.
 - **DNS-01** publishes a temporary TXT record. It can issue wildcard certificates and does not require inbound web ports for domain control, but automating it requires DNS API credentials. Scope those credentials to the smallest feasible zone/record permissions, store them securely, and do not embed them in an image or broad workflow.
 
 Use the certificate tool's documented integration for the selected proxy. For example, Caddy can manage public certificates automatically; Nginx commonly uses Certbot or another ACME client with a carefully configured deploy/reload hook. Do not have two independent clients compete to manage the same certificate lineage.

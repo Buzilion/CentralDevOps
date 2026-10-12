@@ -31,6 +31,7 @@ Produce an evidence-based health note for one low-risk, existing systemd service
 
    ```sh
    uptime
+   nproc
    free -h
    df -hT
    df -i

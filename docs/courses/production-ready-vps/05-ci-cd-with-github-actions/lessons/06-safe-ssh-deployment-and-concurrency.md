@@ -49,7 +49,7 @@ Implement the least-privileged path in a staging/test target first. Prove the ac
 1. Why should the application workflow not also become the server-provisioning workflow?
 2. Which untrusted values could turn an SSH command into arbitrary remote execution?
 3. Why does deployment concurrency not guarantee every release is deployed in order?
-4. What does a successful container start prove that a readiness check does not?
+4. What does a readiness check prove that a successful container start does not?
 
 ## References
 

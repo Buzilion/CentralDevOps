@@ -8,7 +8,7 @@ You can design a backup destination that survives the failures it is meant to ad
 
 A backup on the same VPS does not protect against VPS loss, disk failure, host compromise, or an operator deleting the wrong directory. A second directory or Docker volume on the same disk is not an independent copy. Send at least one recoverable copy to a separate provider, account, region, or physical location appropriate to the threat model. Prefer a destination that cannot be altered or erased using the production VPS's ordinary credentials.
 
-The 3-2-1 heuristic means keeping three copies of important data, on two kinds of storage, with one copy off-site. It helps prompt independence, but it does not specify consistency, encryption, retention, restore testing, or access control. Three synchronized replicas can all receive accidental deletion or ransomware-encrypted files. Treat it as a design prompt, not a completion certificate.
+The 3-2-1 heuristic means keeping three total copies of important data, including the primary copy, on two kinds of storage, with one copy off-site. It helps prompt independence, but it does not specify consistency, encryption, retention, restore testing, or access control. Three synchronized replicas can all receive accidental deletion or ransomware-encrypted files. Treat it as a design prompt, not a completion certificate.
 
 Consider immutable/object-lock retention, versioning, delayed deletion, or a separate backup account for protection from compromise and mistakes. Understand each provider's minimum retention, legal hold, lifecycle, and early-deletion charges. Immutability can preserve bad or sensitive data too; combine it with tested recovery and an explicit retention/deletion policy.
 

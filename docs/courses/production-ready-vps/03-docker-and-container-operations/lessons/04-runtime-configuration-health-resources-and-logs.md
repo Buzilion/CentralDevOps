@@ -56,7 +56,7 @@ docker events --since 30m
 sudo ss -lntup
 ```
 
-Review outputs before sharing them: `inspect`, environment dumps, and application logs may contain sensitive values. `docker exec` is useful for narrowly scoped inspection, but it changes the running container's state if you modify files and should not become an undocumented deployment method.
+`docker stats --no-stream` prints one resource-usage snapshot instead of continuously refreshing, which is easier to read and capture as evidence. Review outputs before sharing them: `inspect`, environment dumps, and application logs may contain sensitive values. `docker exec` is useful for narrowly scoped inspection, but it changes the running container's state if you modify files and should not become an undocumented deployment method.
 
 ## Knowledge check
 

@@ -14,8 +14,18 @@ Demonstrate that a deliberately selected Docker volume survives container replac
 
 1. From Task 01 and the application's documentation, list every stateful path and determine whether the app actually needs a database or another persistent service. Do not infer that all container writes should persist.
 2. For each required stateful path, record whether it uses a named volume, bind mount, external managed service, or is intentionally ephemeral. Inspect the effective Compose configuration and `docker inspect` mount details.
-3. Create a clearly named disposable test volume and write a unique, non-sensitive marker to it from a temporary container. Remove only that temporary container; mount the same volume in a second temporary container and read the marker.
-4. Remove the disposable volume only after confirming its name and contents are the test data. Do not use volume-prune or broad `down -v` commands.
+3. Create a disposable test volume and write a unique, non-sensitive marker to it from a temporary container. The following example uses a uniquely named volume and the official BusyBox image; run it in the same shell so `$TEST_VOLUME` remains set:
+
+   ```sh
+   TEST_VOLUME="course-persistence-test-$(date +%s)-$$"
+   docker volume create "$TEST_VOLUME"
+   docker run --rm --network none --mount "type=volume,source=$TEST_VOLUME,target=/data" busybox:1.37.0 sh -c 'printf "%s\n" "persistence-check" > /data/marker'
+   docker run --rm --network none --mount "type=volume,source=$TEST_VOLUME,target=/data,readonly" busybox:1.37.0 cat /data/marker
+   docker volume inspect "$TEST_VOLUME"
+   ```
+
+   The marker should be printed after the first temporary container is removed.
+4. After confirming the volume name and marker, remove only this disposable volume with `docker volume rm "$TEST_VOLUME"`. Do not use volume-prune or broad `down -v` commands.
 5. For every application dependency, inspect the Compose network membership and confirm the client uses the service name plus the container port. Confirm the database/backend does not have a host-published port.
 6. Test service connectivity from the application container or an approved diagnostic container attached to the same private network. Use a test appropriate to the service; do not print credentials or rely only on `expose`.
 7. Inspect `docker compose ps`, `docker network inspect`, `docker volume inspect`, `docker port`, and host listeners. Compare the result with the Subject 2 exposure matrix.

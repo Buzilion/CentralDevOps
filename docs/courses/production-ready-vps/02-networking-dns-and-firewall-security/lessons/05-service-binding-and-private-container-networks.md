@@ -47,7 +47,7 @@ The database should normally be reachable only by the application and authorized
 
 ## Docker networking preview
 
-When Docker is introduced, containers on a user-defined network can reach one another by service name without publishing every service port on the VPS. A Compose service `ports` mapping publishes a port on the host; a `ports` mapping such as `127.0.0.1:HOST_PORT:CONTAINER_PORT` restricts the host-side listener to IPv4 loopback, while omitting `ports` and using a shared private network keeps the service un-published to the host's external interfaces.
+When Docker is introduced, containers on a user-defined network can reach one another by service name without publishing every service port on the VPS. A Compose service `ports` mapping publishes a port on the host. Writing it as `127.0.0.1:HOST_PORT:CONTAINER_PORT` restricts that host-side listener to IPv4 loopback. Omitting `ports` entirely and relying on a shared private network keeps the service un-published on the host's external interfaces.
 
 Compose `expose` documents/advertises a container port to connected containers but does not create an external host port mapping. It is not an access-control boundary between all possible networks. Docker networking details vary by engine, driver, and configuration; verify the actual resulting sockets and external reachability. Published ports can interact with firewall rules in ways that bypass assumptions based on UFW alone.
 

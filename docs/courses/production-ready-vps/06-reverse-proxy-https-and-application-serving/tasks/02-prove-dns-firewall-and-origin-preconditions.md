@@ -1,4 +1,4 @@
-# Task 02 — Prove DNS, firewall, and origin preconditions
+# Task 02 — Prove DNS, firewall, and upstream preconditions
 
 ## Outcome
 

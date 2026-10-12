@@ -6,7 +6,7 @@ You can prove the intended public attack surface from outside the VPS, distingui
 
 ## Build an expected-exposure matrix
 
-Before probing the host, write down what should be reachable now. A fresh VPS before application serving is configured might need only the administrative SSH endpoint; ports 80 and 443 can remain closed until the reverse proxy is intentionally deployed. Later, the public web edge may need TCP 80/443 while application and database ports remain private.
+Before probing the host, write down what should be reachable now. Before application serving is configured, a fresh VPS might need only the administrative SSH endpoint; ports 80 and 443 can remain closed until the reverse proxy is intentionally deployed. Later, the public web edge may need TCP 80/443 while application and database ports remain private.
 
 | Service | Protocol/port | Expected source | Public now? | Reason |
 |---|---|---|---|---|

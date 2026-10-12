@@ -9,6 +9,7 @@ You can make a first-pass resource assessment, distinguish common capacity sympt
 ```sh
 date -Is
 uptime
+nproc
 free -h
 df -hT
 df -i
@@ -20,6 +21,8 @@ Capture this snapshot before making a change. It provides a baseline for later c
 ## CPU and load
 
 `uptime` reports uptime and load averages over 1, 5, and 15 minutes. Load average is not CPU percentage; it counts runnable work and certain uninterruptible waits. Interpret it with vCPU count and workload. High load together with saturated CPU can mean CPU contention; high load without saturated CPU can point to I/O waits or other bottlenecks.
+
+`nproc` reports the processing units available to the current process. CPU affinity or container limits can make this differ from the VPS's nominal vCPU count, so treat it as context rather than a complete capacity measure.
 
 Use `top` for a live view and `ps` for a snapshot. Look for sustained patterns, not one transient spike. Do not terminate a process just because it is using CPU: identify its owner, role, and expected behavior first.
 

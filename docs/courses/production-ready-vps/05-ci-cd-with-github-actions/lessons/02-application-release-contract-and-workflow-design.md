@@ -43,7 +43,7 @@ Use the application's supported health/readiness contract. A process that starte
 
 ## Practical checkpoint
 
-Create a sanitized release-contract document covering the table above. Include repository paths and exact build/test/start commands, but no VPS addresses, credentials, or production values. Mark unknown items and resolve blockers before writing a production workflow. Complete [Task 01](../tasks/01-inspect-the-application-and-define-the-release-contract.md).
+Create a sanitized release-contract document covering the table above. Include repository paths and exact build/test/start commands, but no VPS addresses, credentials, or production values. Mark unknown items and resolve blockers before writing a production workflow. Complete [Task 01 — Inspect the application and define the release contract](../tasks/01-inspect-the-application-and-define-the-release-contract.md).
 
 ## Knowledge check
 

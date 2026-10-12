@@ -56,7 +56,7 @@ getent ahosts app.example.com
 
 `dig` lets you inspect record types and, with `+trace`, follow delegation. `getent` shows how the local system resolves a name through its configured name-service path. A domain may not have every queried type. Use the DNS provider's UI or API to inspect what is actually configured, and compare the result with the intended VPS address from the provider panel.
 
-DNSSEC adds authenticity checks to DNS data when enabled and correctly configured; a broken delegation or signing chain can make a domain fail validation for validating resolvers. Do not enable or modify DNSSEC blindly during an address change—follow the DNS provider's and registrar's documented procedure.
+DNSSEC adds authenticity checks to DNS data when enabled and correctly configured; a broken delegation or signing chain can make a domain fail validation on resolvers that enforce it. Do not enable or modify DNSSEC blindly during an address change—follow the DNS provider's and registrar's documented procedure.
 
 ## DNS and HTTPS are separate checks
 

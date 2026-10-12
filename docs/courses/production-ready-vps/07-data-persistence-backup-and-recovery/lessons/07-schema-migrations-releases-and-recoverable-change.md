@@ -30,7 +30,7 @@ When a schema change can be split, a compatibility-oriented approach reduces dep
 3. **Switch:** move reads/writes to the new representation and validate behavior.
 4. **Contract:** only after old code is no longer needed and data is verified, remove obsolete columns or formats in a later release.
 
-This pattern is not possible for every change, and compatibility must be demonstrated for the actual app and ORM. For an irreversible migration, prefer a staged data transformation, an explicit maintenance window, a tested point-in-time restore, or a forward-fix plan. Never assume that rerunning a partially completed migration is safe; inspect migration transactionality and idempotency.
+This pattern is not possible for every change, and compatibility must be demonstrated for the actual application and its database-access layer (for example, an ORM that generates queries against the schema). For an irreversible migration, prefer a staged data transformation, an explicit maintenance window, a tested point-in-time restore, or a forward-fix plan. Never assume that rerunning a partially completed migration is safe; inspect migration transactionality and idempotency.
 
 ## Snapshot boundaries and write freeze
 

@@ -15,7 +15,7 @@ A practical alert set for one VPS might include:
 - Application process repeatedly restarting, failing readiness, or returning a sustained unhealthy result.
 - Disk capacity or inode exhaustion projected within the response window; critical free-space conditions may require immediate action.
 - Sustained memory pressure, OOM events, or a dependency failure that affects the core user path.
-- Backup/restore-point age beyond the recovery objective, based on the previous course's verified backup signal.
+- Backup/restore-point age beyond the recovery objective, based on the earlier course subject's verified backup signal.
 - TLS certificate renewal failure or expiry approaching the time needed to recover it.
 - Monitoring data or notification integration missing/stale when that creates a blind spot.
 

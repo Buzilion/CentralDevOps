@@ -66,7 +66,7 @@ Run only trusted images, keep the host and Engine patched, use least privilege, 
 
 On a conventional rootful installation, the daemon runs with host-level privileges. A user who can control it can usually start a container that mounts and modifies host files. Membership in the `docker` group is therefore effectively root-equivalent access, even though the user's shell prompt does not become root.
 
-Use `sudo docker ...` while learning unless there is a deliberate, reviewed access design. If granting Docker access to an account, treat that as a privileged access decision: restrict group membership, protect SSH credentials, review who can use the VPS, and document revocation. Rootless Docker can reduce some daemon privileges, but has different networking, storage, and operational trade-offs; it is not automatically a drop-in fix.
+Where lesson or task examples omit `sudo`, prefix Docker commands with it on a rootful VPS unless the account has a deliberate, reviewed access design that grants daemon control. For rootless Docker, use its documented access model instead of adding `sudo`. Restrict daemon access, protect SSH credentials, review who can use the VPS, and document revocation. Rootless Docker can reduce some daemon privileges, but has different networking, storage, and operational trade-offs; it is not automatically a drop-in fix.
 
 Never:
 

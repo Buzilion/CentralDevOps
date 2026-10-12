@@ -7,7 +7,7 @@ Demonstrate that an operator can coordinate a bounded incident scenario, find th
 ## Prerequisites
 
 - Complete Tasks 01–05 and review [Lesson 06 — Incident response, decision-making, and operational runbooks](../lessons/06-incident-response-and-operational-runbooks.md).
-- Have a current service contract, failure diagnosis matrix, monitoring/alert route, deployment runbook, and recovery procedure.
+- Have a current operating contract, failure diagnosis matrix, monitoring/alert route, deployment runbook, and recovery procedure.
 - Obtain approval for the exercise and use a non-production scenario where practical.
 
 ## Procedure
