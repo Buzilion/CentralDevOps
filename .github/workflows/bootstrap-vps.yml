@@ -1,0 +1,249 @@
+name: Bootstrap VPS Hosts
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_hosts:
+        description: "Comma-separated Ansible host aliases, for example buz-dev-1,buz-prod-1"
+        required: true
+        type: string
+      execution_mode:
+        description: "Run local validation, remote check mode, or apply changes"
+        required: true
+        type: choice
+        default: syntax
+        options:
+          - syntax
+          - check
+          - apply
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Validate Ansible inventory and targets
+    runs-on: ubuntu-latest
+    outputs:
+      bootstrap_matrix: ${{ steps.select-hosts.outputs.bootstrap_matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          python -m pip install ansible-core==2.18.6
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Validate selected inventory hosts
+        id: select-hosts
+        shell: bash
+        env:
+          TARGET_HOSTS: ${{ inputs.target_hosts }}
+        working-directory: ${{ github.workspace }}/ansible
+        run: |
+          set -euo pipefail
+          inventory_json="$RUNNER_TEMP/ansible-inventory.json"
+          trap 'rm -f "$inventory_json"' EXIT
+
+          echo 'bootstrap_matrix={"include":[{"environment":"development","hosts":""}]}' > "$GITHUB_OUTPUT"
+          ansible-inventory -i inventory --list > "$inventory_json"
+          python - "$inventory_json" "$GITHUB_OUTPUT" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as inventory_file:
+              inventory = json.load(inventory_file)
+
+          requested_hosts = [
+              host.strip()
+              for host in os.environ.get("TARGET_HOSTS", "").split(",")
+          ]
+          if not requested_hosts or any(not host for host in requested_hosts):
+              print("::error::Enter one or more comma-separated inventory host aliases.")
+              raise SystemExit(1)
+          if len(requested_hosts) != len(set(requested_hosts)):
+              print("::error::Each inventory host alias may only be selected once.")
+              raise SystemExit(1)
+
+          available_hosts = set(inventory.get("_meta", {}).get("hostvars", {}))
+          if not available_hosts:
+              print("::error::The inventory contains no hosts.")
+              raise SystemExit(1)
+
+          if any(not re.fullmatch(r"[A-Za-z0-9_.-]+", host) for host in requested_hosts):
+              print("::error::Host aliases may contain only letters, numbers, periods, underscores, and hyphens.")
+              raise SystemExit(1)
+
+          if set(requested_hosts) - available_hosts:
+              print("::error::One or more selected aliases are not present in the Ansible inventory.")
+              print("Available aliases: " + ", ".join(sorted(available_hosts)))
+              raise SystemExit(1)
+
+          supported_environments = ("development", "staging", "production")
+          environments_by_host = {}
+          for environment in supported_environments:
+              for host in inventory.get(environment, {}).get("hosts", []):
+                  environments_by_host.setdefault(host, []).append(environment)
+
+          invalid_hosts = [
+              host
+              for host in requested_hosts
+              if len(environments_by_host.get(host, [])) != 1
+          ]
+          if invalid_hosts:
+              print(
+                  "::error::Every selected host must belong to exactly one of "
+                  "development, staging, or production."
+              )
+              raise SystemExit(1)
+
+          matrix = {
+              "include": [
+                  {
+                      "environment": environment,
+                      "hosts": ",".join(
+                          host
+                          for host in requested_hosts
+                          if environment in environments_by_host[host]
+                      ),
+                  }
+                  for environment in supported_environments
+                  if any(
+                      environment in environments_by_host[host]
+                      for host in requested_hosts
+                  )
+              ]
+          }
+          with open(sys.argv[2], "w", encoding="utf-8") as output:
+              output.write(
+                  "bootstrap_matrix="
+                  + json.dumps(matrix, separators=(",", ":"))
+                  + "\n"
+              )
+          print(
+              "Validated target hosts by environment: "
+              + ", ".join(
+                  f"{item['environment']} ({item['hosts']})"
+                  for item in matrix["include"]
+              )
+          )
+          PY
+
+      - name: Check playbook syntax
+        env:
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
+        working-directory: ${{ github.workspace }}/ansible
+        run: |
+          ansible-playbook \
+            --inventory inventory \
+            playbooks/bootstrap.yml \
+            --syntax-check
+
+  bootstrap:
+    name: Bootstrap ${{ matrix.environment }} VPS hosts
+    needs: preflight
+    if: ${{ inputs.execution_mode != 'syntax' }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    strategy:
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.preflight.outputs.bootstrap_matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible and sshpass
+        run: |
+          python -m pip install ansible-core==2.18.6
+          ansible-galaxy collection install -r ansible/requirements.yml
+          sudo apt-get update
+          sudo apt-get install --yes sshpass
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          VPS_USERNAME: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_USERNAME' || matrix.environment == 'staging' && 'STG_VPS_USERNAME' || 'PROD_VPS_USERNAME'] }}
+          VPS_PASSWORD: ${{ secrets[matrix.environment == 'development' && 'DEV_VPS_PASSWORD' || matrix.environment == 'staging' && 'STG_VPS_PASSWORD' || 'PROD_VPS_PASSWORD'] }}
+          VPS_KNOWN_HOSTS: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_KNOWN_HOSTS' || matrix.environment == 'staging' && 'STG_VPS_KNOWN_HOSTS' || 'PROD_VPS_KNOWN_HOSTS'] }}
+          TARGET_ENVIRONMENT: ${{ matrix.environment }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$VPS_USERNAME" ]]; then
+            echo "::error::Set the VPS username variable for the $TARGET_ENVIRONMENT environment."
+            exit 1
+          fi
+          if [[ -z "$VPS_PASSWORD" ]]; then
+            echo "::error::Set the VPS password secret for the $TARGET_ENVIRONMENT environment."
+            exit 1
+          fi
+          if [[ -z "$VPS_KNOWN_HOSTS" ]]; then
+            echo "::error::Set the VPS known hosts variable for the $TARGET_ENVIRONMENT environment."
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Run Ansible
+        shell: bash
+        env:
+          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
+          ANSIBLE_HOST_KEY_CHECKING: "True"
+          EXECUTION_MODE: ${{ inputs.execution_mode }}
+          TARGET_HOSTS: ${{ matrix.hosts }}
+          TARGET_ENVIRONMENT: ${{ matrix.environment }}
+          VPS_USERNAME: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_USERNAME' || matrix.environment == 'staging' && 'STG_VPS_USERNAME' || 'PROD_VPS_USERNAME'] }}
+          VPS_PASSWORD: ${{ secrets[matrix.environment == 'development' && 'DEV_VPS_PASSWORD' || matrix.environment == 'staging' && 'STG_VPS_PASSWORD' || 'PROD_VPS_PASSWORD'] }}
+          VPS_SSH_PUBLIC_KEY: ${{ vars[matrix.environment == 'development' && 'DEV_SSH_PUBLIC_KEY' || matrix.environment == 'staging' && 'STG_SSH_PUBLIC_KEY' || 'PROD_SSH_PUBLIC_KEY'] }}
+        working-directory: ${{ github.workspace }}/ansible
+        run: |
+          set -euo pipefail
+          if [[ -z "$VPS_SSH_PUBLIC_KEY" ]]; then
+            echo "::error::Set the SSH public key environment variable for the $TARGET_ENVIRONMENT environment."
+            exit 1
+          fi
+
+          inventory="inventory"
+          credentials_file="$(mktemp)"
+          trap 'rm -f "$credentials_file"' EXIT
+          python - "$credentials_file" <<'PY'
+          import json
+          import os
+          import sys
+
+          with open(sys.argv[1], "w", encoding="utf-8") as credentials:
+              json.dump(
+                  {
+                      "ansible_user": os.environ["VPS_USERNAME"],
+                      "ansible_password": os.environ["VPS_PASSWORD"],
+                      "ssh_public_key": os.environ["VPS_SSH_PUBLIC_KEY"],
+                  },
+                  credentials,
+              )
+          PY
+
+          args=(--extra-vars "@$credentials_file")
+          args+=(--ssh-common-args "-o PubkeyAuthentication=no -o PreferredAuthentications=password")
+          if [[ "$EXECUTION_MODE" == "check" ]]; then
+            args+=(--check)
+          fi
+
+          ansible-playbook \
+            --inventory "$inventory" \
+            playbooks/bootstrap.yml \
+            --limit "$TARGET_HOSTS" \
+            "${args[@]}"
