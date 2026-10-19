@@ -37,31 +37,35 @@ Host symptoms are not themselves service objectives. High CPU may be harmless du
 
 ## Design a signal path with independent failure boundaries
 
-Think through the complete path:
+For this course, use Grafana Alloy as the VPS-side collector and Grafana Cloud as the managed destination and operator interface:
 
 ```text
 Application / VPS
-   | metrics, health, logs
+   | host metrics, selected systemd logs, optional app metrics
    v
-Collector or provider agent
-   | transport and storage
+Grafana Alloy (systemd agent)
+   | outbound HTTPS: Prometheus remote_write / Loki push
    v
-Dashboard and rule evaluator
-   | notification integration
+Grafana Cloud Metrics + Logs
+   | dashboards, alert rules, notification policies
    v
 Human responder
 
-External probe ----------------------^
-Independent source checks public behavior
+External probe (Grafana Cloud Synthetic Monitoring, if enabled,
+or another independent provider)
+   | public HTTPS request from outside the VPS
+   +---------------------------------> Grafana Cloud / notification route
 ```
 
-If the collector, rule evaluator, and notifications all run on the monitored VPS, a host crash can remove both the service and its evidence of failure. A local agent can still collect useful host telemetry during normal operation, but add a provider-level monitor or an external uptime check and route critical alerts through an independently reachable service. Consider how loss of Internet access, credentials, DNS, or the notification provider affects this chain.
+Alloy collects and forwards telemetry; it is not the metrics database, log store, dashboard, or external uptime probe. The standard host-metrics path uses Alloy's `prometheus.exporter.unix` and `prometheus.scrape` components, then sends samples with `prometheus.remote_write` to Grafana Cloud Metrics. Selected systemd journal records can flow through `loki.source.journal` and `loki.write` to Grafana Cloud Logs. Grafana Cloud hosts the dashboards and alert evaluation, so losing the VPS does not also remove previously ingested telemetry. Alloy still depends on the VPS, its network, and valid credentials; configure missing-data behavior and keep a separate public check outside that failure boundary.
+
+Do not install a local Grafana, Loki, or Prometheus server for this course's default setup. Alloy sends telemetry outbound over HTTPS; do not open an inbound scrape port for the built-in Unix exporter. Keep Alloy's own HTTP/UI interface private as well. Consider how loss of Internet access, credentials, DNS, Grafana Cloud, or the notification provider affects the full chain.
 
 Each signal needs a source, timestamp, named owner for its source and collection path, useful retention period, and defined behavior when missing. Name the alert responder separately; on a small service, the same person may hold both roles. Stale data must not look like healthy zero. Alert on missing telemetry when its absence prevents a critical decision. Keep a deliberate list of blind spots: for example, an external check sees public behavior but cannot identify a disk bottleneck; host metrics can show disk pressure but cannot prove that a user can sign in.
 
 ## Keep the design proportionate to a single VPS
 
-The monitoring stack consumes the same CPU, memory, disk, and network that the application needs. Estimate retention and resource usage before installing it. Prefer a managed/provider service or a lightweight agent when it meets the need; if you self-host a collector and dashboard, restrict access, cap retention, and understand the consequences of losing the host. Do not expose an exporter or metrics endpoint publicly simply to make collection convenient.
+The monitoring stack consumes the same CPU, memory, disk, and network that the application needs. Estimate retention and resource usage before installing it. The course's default avoids a self-hosted metrics database and dashboard: run the lightweight Alloy agent on the host and use Grafana Cloud's managed backends and Grafana UI. Review Cloud retention, ingestion limits, and cost for the account in use. Do not expose an exporter or metrics endpoint publicly simply to make collection convenient.
 
 Before production changes, record a baseline with representative normal traffic and a controlled maintenance or deployment window. Label unusual expected work, such as backup or image builds. Baselines make thresholds meaningful, but avoid treating historical normal behavior as safe when it includes a known capacity issue.
 
@@ -81,3 +85,5 @@ Complete [Task 01 — Define service signals, ownership, and measurable objectiv
 - [Google SRE Book — Service Level Objectives](https://sre.google/sre-book/service-level-objectives/)
 - [Google SRE Workbook — Implementing SLOs](https://sre.google/workbook/implementing-slos/)
 - [OpenTelemetry — Signals](https://opentelemetry.io/docs/concepts/signals/)
+- [Grafana Alloy — Install on Linux](https://grafana.com/docs/alloy/latest/set-up/install/linux/)
+- [Grafana Cloud — Monitor a Linux server](https://grafana.com/docs/learning-journeys/linux-server-integration/)

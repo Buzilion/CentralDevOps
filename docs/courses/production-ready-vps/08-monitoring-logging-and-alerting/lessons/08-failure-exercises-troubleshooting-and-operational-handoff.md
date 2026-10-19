@@ -34,12 +34,15 @@ Use a staging target, test rule, provider test function, or reversible low-risk 
 
 Define an exercise plan: owner, expected result, start/end, affected component, safety limit, rollback/stop condition, and where evidence will be stored. Confirm normal service health and a working out-of-band communication path first. Test both firing and recovery, duplicate suppression, stale telemetry, and the human's ability to locate the correct runbook. For any production exercise, obtain appropriate authorization, announce it, and keep the blast radius small.
 
+For the Alloy/Grafana Cloud path, a safe staging exercise is to stop Alloy on a test VPS or disable a test scrape target, then confirm Grafana Cloud reports missing data and the no-data alert fires while the independent public uptime check continues. Restart Alloy or restore the test target, then verify that fresh metrics/logs resume before the alert resolves. Do not stop the only production collector as an unannounced test. If using a non-production token or configuration, remove it after the exercise.
+
 ## Maintain an operational runbook
 
 A useful runbook contains:
 
 - Service and environment scope, owner, support hours, and escalation contacts.
 - Links to external availability checks, dashboards, logs, deployment history, and provider status.
+- Alloy installation/version, configuration path, service status and log commands, Cloud metrics/logs endpoint identity, and the safe credential-retrieval/rotation process (never token values).
 - Alert meanings, severity, thresholds, expected response, and maintenance/silence rules.
 - Safe first checks and commands or UI paths, with expected healthy and unhealthy results.
 - Restart, rollback, capacity, certificate, dependency, and communication procedures appropriate to the actual application.
@@ -52,7 +55,7 @@ During a live incident, an operator handoff must transfer context, not just a ru
 
 ## Treat telemetry failures as incidents too
 
-Alert on collection gaps, stale samples, failed integrations, and unavailable dashboards only where they create a material blind spot. Document an alternate way to check the VPS and public service if the monitoring provider is unavailable. If both service and telemetry depend on the same host, use the provider console or another independent path to regain visibility.
+Alert on collection gaps, stale samples, failed integrations, and unavailable dashboards only where they create a material blind spot. Grafana Cloud dashboards remain outside the VPS failure boundary, but Alloy cannot forward while the VPS or its network is unavailable. Document an alternate way to check public service behavior if Grafana Cloud is unavailable, and the VPS provider-console/recovery path if the host itself is unreachable.
 
 An alert platform that cannot notify anyone is not operational. Periodically confirm recipients, escalation, credential expiry, provider quotas, and integration health. Monitor the monitoring path without creating an infinite alert loop.
 
@@ -65,7 +68,7 @@ Complete [Task 07 — Run a monitoring failure exercise and publish the runbook]
 1. Why is alert resolution not by itself proof that service recovered?
 2. Which steps distinguish a symptom from a verified root cause?
 3. Name two safe ways to test alert delivery without disrupting production.
-4. What should an operator do if the VPS and its self-hosted monitoring are both unreachable?
+4. If the VPS is unreachable, which monitoring path should still detect the outage, and what fallback should an operator use if Grafana Cloud is unavailable?
 
 ## References
 

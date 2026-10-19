@@ -1,0 +1,32 @@
+# Important notes for future VPS automation:
+
+- use these command to check the VPS health information: 
+  - uptime: how long and when does the VPS have been running
+  - free -h: how much memory and swap is available 
+  - systemctl --failed: listed all failed services, mount, or timers
+- setup different user, groups, ownership/permission for different usage, like:
+  - Administrator for human controlled action
+  - Deployment identity for automated deployment purposes
+  - Service identity to run one service and its required files and resources
+- update/upgrade the existing packages using sudo apt update? *subject to change
+- setup Grafana Cloud (Loki) on the VPS for monitoring/observability on external hosted service and UI friendly interface
+- after ssh public keys is put into the VPS and the client confirmed could connect to it, please disable the SSH password authentication and permitrootlogin
+- check VPS health by running:
+  - `date -Is`
+  - `uptime`
+  - `systemctl --failed`
+  - `df -hT`
+  - `free -h`
+- configure VPS network
+  - configure VPS provider firewall
+  - configure VPS host firewall (e.g. allow public connection to port 80/443 and private application service (the request will be forwarded by reverse proxy on 443 to each individual private services))
+  - configure reverse proxy (like nginx)
+- hardened SSH connection
+  - configure the provider firewall to only allow inbound connection from known client IP Address (optional)
+  - configure the sshd config files that:
+    - enable pubkeyauth
+    - disable password auth
+    - permit root login no
+    - max auth retries 4 times
+    - list allowed users (this case is ubuntu only, for now)
+  - install Fail2ban to monitor and temporarily bans IP that fail auth

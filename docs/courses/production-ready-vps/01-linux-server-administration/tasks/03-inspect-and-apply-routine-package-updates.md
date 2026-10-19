@@ -54,7 +54,7 @@ Demonstrate the difference between refreshing package metadata and applying upgr
 
 ## Acceptance criteria
 
-- [ ] You can explain why `apt update` alone does not upgrade installed packages.
+- [x] You can explain why `apt update` alone does not upgrade installed packages.
 - [ ] Repository errors were resolved rather than ignored or bypassed.
 - [ ] Proposed changes/removals were reviewed before confirmation.
 - [ ] A reboot decision was recorded and made deliberately.

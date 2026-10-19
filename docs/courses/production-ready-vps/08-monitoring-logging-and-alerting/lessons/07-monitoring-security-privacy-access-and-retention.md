@@ -18,6 +18,10 @@ Use named accounts, least privilege, multi-factor authentication where available
 
 Store API tokens and notification secrets in a suitable secret store or protected service configuration with minimal file permissions; do not commit them to Git, bake them into images, include them in command-line arguments visible to other users, or print them during tests. Rotate credentials and verify that old values no longer work. Restrict agent privileges and do not grant broad Docker socket, host PID, or host filesystem access without a documented reason.
 
+For Grafana Cloud, create stack-scoped Access Policy tokens with only the write scopes Alloy needs (normally `metrics:write` for metrics and `logs:write` for logs). Prefer separate tokens so each can be rotated independently; never give the agent dashboard-administration, data-read, or organization-wide permissions. Store the token in a protected file and load it with Alloy's `local.file` component marked `is_secret = true`, rather than embedding it in `config.alloy`. The Cloud endpoint and instance/tenant username are not the token, but still sanitize them from general-purpose evidence.
+
+The Linux Alloy package runs as a systemd service. Its local HTTP/UI interface should stay on a trusted local/private address; verify the actual listener and do not bind it to `0.0.0.0` or open its port in the firewall. The Unix exporter is collected within Alloy and does not need a public listener. Alloy needs outbound HTTPS to the Cloud endpoints, not inbound access from Grafana Cloud. For journal collection, review the broad read access granted by journal groups; for Docker collection, treat access to the Docker socket as host-level privilege.
+
 Use encrypted transport for remote telemetry and follow the provider's supported authentication model. For self-hosted dashboards, protect session cookies, TLS, updates, and backups just as for other production services. Monitoring agents and exporters are code running on the host; update them and limit their permissions.
 
 ## Retention, deletion, and integrity
@@ -50,3 +54,6 @@ Use [Task 04 — Configure useful, bounded, privacy-safe application logs](../ta
 - [OWASP Cheat Sheet Series — Logging](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)
 - [NIST SP 800-92 — Guide to Computer Security Log Management](https://csrc.nist.gov/pubs/sp/800/92/final)
 - [Prometheus documentation — Security model](https://prometheus.io/docs/operating/security/)
+- [Grafana Cloud — Access Policies](https://grafana.com/docs/grafana-cloud/security-and-account-management/authentication-and-permissions/access-policies/)
+- [Grafana Alloy — `local.file`](https://grafana.com/docs/alloy/latest/reference/components/local/local.file/)
+- [Grafana Alloy — Configure Alloy on Linux](https://grafana.com/docs/alloy/latest/configure/linux/)

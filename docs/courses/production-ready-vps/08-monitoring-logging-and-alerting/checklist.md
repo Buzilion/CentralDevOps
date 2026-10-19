@@ -1,8 +1,8 @@
 # Monitoring, Logging, and Alerting — Course Checklist
 
-Complete this subject after **Linux Server Administration**, **Networking, DNS, and Firewall Security**, **Docker and Container Operations**, **Infrastructure Automation with Ansible**, **CI/CD with GitHub Actions**, **Reverse Proxy, HTTPS, and Application Serving**, and **Data Persistence, Backup, and Recovery**. Base every signal on the inspected application and its actual runtime contract. This course does not assume a specific language, database, metrics stack, or notification provider.
+Complete this subject after **Linux Server Administration**, **Networking, DNS, and Firewall Security**, **Docker and Container Operations**, **Infrastructure Automation with Ansible**, **CI/CD with GitHub Actions**, **Reverse Proxy, HTTPS, and Application Serving**, and **Data Persistence, Backup, and Recovery**. Base every signal on the inspected application and its actual runtime contract. This module's default telemetry path uses Grafana Alloy as a systemd agent on the VPS and Grafana Cloud for managed metrics, logs, dashboards, and alert evaluation. Application instrumentation and notification destinations still depend on the actual service and account capabilities.
 
-Monitoring is an operational control, not a dashboard installation exercise. Decide what failures matter, collect the minimum signals needed to detect and diagnose them, alert a reachable owner, and prove the complete path with safe tests. Prefer an independent monitoring location for externally visible checks and alert delivery; monitoring hosted only on the VPS cannot reliably report that the VPS is unreachable. Keep monitoring private, budget resources on a single VPS, and never publish secrets, personal data, raw production records, or identifying infrastructure details in course evidence.
+Monitoring is an operational control, not a dashboard installation exercise. Decide what failures matter, collect the minimum signals needed to detect and diagnose them, alert a reachable owner, and prove the complete path with safe tests. Public availability checks must run outside the monitored VPS; an Alloy agent on that VPS cannot report a host outage. Keep monitoring private, budget resources on a single VPS, and never publish secrets, personal data, raw production records, or identifying infrastructure details in course evidence.
 
 ## Lessons
 
@@ -29,14 +29,15 @@ Monitoring is an operational control, not a dashboard installation exercise. Dec
 
 - [ ] A service inventory names each critical component and its dependencies; each signal has a source, owner, and known blind spot; unknowns are explicit.
 - [ ] Availability, latency, and recovery expectations are measurable, have an agreed observation window, and distinguish user impact from machine symptoms.
-- [ ] CPU, memory, disk space and inodes, network/listener state, host uptime, and application health are visible with timestamps and useful context.
+- [ ] Alloy is installed and enabled as a systemd service, collects the selected host metrics, and sends fresh samples to Grafana Cloud over outbound HTTPS; its local UI and any scrape endpoints are not publicly reachable.
+- [ ] CPU, memory, disk space and inodes, network/listener state, host uptime, and application health are visible in Grafana Cloud with timestamps and useful context.
 - [ ] Application health checks distinguish process liveness from readiness, avoid leaking internal details, and have tested behavior when a dependency is unavailable.
 - [ ] At least one public availability check runs from outside the VPS and validates the intended hostname, HTTPS certificate, and expected application response.
-- [ ] Logs are searchable, time-correlated, structured where supported, access-controlled, rotated or retained within a defined limit, and tested for sensitive-data leakage.
-- [ ] Dashboards show service-level and host-level signals with units, ranges, and caveats; every displayed signal has been exercised or independently verified.
-- [ ] Important alerts have an owner, actionable context, severity, response expectation, deduplication/recovery behavior, and a tested delivery path.
+- [ ] Selected application/systemd logs reach Grafana Cloud Logs through Alloy, are searchable and time-correlated, and have bounded collection, access, retention, and tested privacy controls.
+- [ ] Grafana Cloud dashboards show service-level and host-level signals with units, ranges, and caveats; every displayed signal has been exercised or independently verified.
+- [ ] Grafana Cloud alert rules and notification policies have an owner, actionable context, severity, response expectation, deduplication/recovery behavior, and a tested delivery path.
 - [ ] Monitoring and alert delivery do not rely exclusively on the VPS being monitored; loss of telemetry and stale data are detectable.
-- [ ] Monitoring endpoints, credentials, logs, metrics labels, dashboards, and notification destinations are protected; retention and deletion behavior are documented.
+- [ ] Grafana Cloud endpoints, narrowly scoped write credentials, Alloy's local interface, logs, metric labels, dashboards, and notification destinations are protected; retention and deletion behavior are documented.
 - [ ] A safe failure exercise proves detection, notification, diagnosis, recovery, and evidence capture without deliberately exhausting production resources or exposing private data.
 - [ ] A dated, sanitized runbook explains routine checks, alert response, access, known blind spots, recovery, and escalation; monitoring costs and VPS resource impact are understood.
 

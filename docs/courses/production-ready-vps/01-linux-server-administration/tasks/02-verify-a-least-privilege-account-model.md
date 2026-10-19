@@ -43,7 +43,7 @@ Document which identity you use for administration, the administrative privilege
 
 ## Acceptance criteria
 
-- [ ] The current account and group memberships are known.
+- [x] The current account and group memberships are known.
 - [ ] The scope of `sudo` access is recorded, or the lack of access is documented.
 - [ ] Human administration is distinguished from application/service runtime identity.
 - [ ] No shared password, key material, hash, or sensitive account database content is in the evidence.

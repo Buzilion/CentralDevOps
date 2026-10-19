@@ -13,13 +13,13 @@ Produce a concise monitoring contract for the actual deployed application: criti
 ## Procedure
 
 1. Inspect the real deployment: public hostname and address families, reverse proxy, application service/container, health route if present, database or other essential dependencies, scheduled jobs, backup signal, and deployment process. Mark unavailable facts as **unknown** rather than assuming.
-2. Draw or describe the user request path from external client through DNS, firewall, TLS/proxy, application, and essential dependency. Add a separate line for collection, alert evaluation, notification destination, and responder.
+2. Draw or describe the user request path from external client through DNS, firewall, TLS/proxy, application, and essential dependency. Add the telemetry path: VPS metrics and selected logs -> Alloy -> Grafana Cloud Metrics/Logs -> Cloud dashboards and alert rules -> notification destination and responder. Draw the public synthetic check separately and identify where it runs outside the VPS.
 3. List the critical user journeys or service promises. Separate core functionality from optional features and administrative functions. Do not place credentials or customer data in the inventory.
 4. For each critical behavior, define one or more candidate SLIs. Specify the measurement point, numerator/denominator or precise check, excluded cases, collection source, time window, unit, and what missing data means.
 5. Agree on an initial SLO or explicit baseline period for availability and, if meaningful, latency. Record the owner, target window, measurement assumptions, and date reviewed. An unapproved target must remain a proposal, not be presented as a commitment.
-6. Inventory host, application, dependency, backup, certificate, and monitoring-path signals. Record source, freshness, expected collection interval, retention, signal owner, access boundary, and blind spot for each.
+6. Inventory host, application, dependency, backup, certificate, and monitoring-path signals. Record source, freshness, expected collection interval, retention, signal owner, access boundary, and blind spot for each. Identify which signals Alloy collects, which Grafana Cloud feature evaluates or displays them, and how missing Alloy/Cloud data is detected.
 7. Rank failure conditions by user impact and urgency. Identify which require immediate notification, which belong on a dashboard, and which can be reviewed periodically. Note a first safe action and response owner for each candidate alert.
-8. Record constraints: VPS size, provider monitoring options, public routes, available notification channels, budget, privacy restrictions, telemetry retention, and who can access the evidence.
+8. Record constraints: VPS size, Grafana Cloud stack and plan capabilities, endpoint/region, public routes, available notification channels, budget, privacy restrictions, telemetry retention, and who can access the evidence. Do not put tokens or sensitive endpoint details in the deliverable.
 9. Review the draft with the application/service owner. Resolve ambiguity or document an owner and due date for each unresolved design decision.
 
 ## Acceptance criteria
@@ -29,6 +29,7 @@ Produce a concise monitoring contract for the actual deployed application: criti
 - [ ] Every indicator has a source, measurement definition, unit/window, signal owner, freshness expectation, and interpretation of missing data.
 - [ ] Any SLO is approved, measurable, and tied to an explicit time window; unapproved proposals are clearly marked.
 - [ ] The design includes both independent external detection and internal/host diagnosis, with their different blind spots.
+- [ ] The Alloy-to-Grafana-Cloud metrics/logs path, Cloud alert-evaluation boundary, and independent public-check path are explicit; no required collection or dashboard endpoint is exposed publicly.
 - [ ] Candidate alert conditions are tied to user impact or a defined operational action rather than arbitrary copied thresholds.
 - [ ] Privacy, access, retention, monitoring costs, and the single-VPS failure boundary are recorded.
 - [ ] The service owner has reviewed the contract, with review date and remaining decisions identified.

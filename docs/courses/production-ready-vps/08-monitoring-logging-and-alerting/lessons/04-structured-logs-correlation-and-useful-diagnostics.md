@@ -29,13 +29,43 @@ Include release identity and component name so logs from a deployment can be dis
 
 Use a stable event description and safe structured error type. Stack traces can help diagnose application defects, but restrict access and scrub secrets/identifiers before emitting them. If an exception includes raw user input or credentials, logging the entire exception can violate the privacy policy.
 
-## Choose a collection and rotation path
+## Collect selected logs with Alloy
 
-For containers, writing application logs to stdout/stderr lets the container runtime collect them and avoids hidden log files in an ephemeral writable layer. Inspect the configured Docker logging driver, its rotation/retention behavior, and how operators retrieve prior logs. The default local setup can consume disk if size and file-count limits are not configured. If using journald or a centralized service instead, define its persistence and retention explicitly.
+On Linux, Alloy can read selected records from the systemd journal with `loki.source.journal`, optionally process them with `loki.process`, and send them to Grafana Cloud Logs through `loki.write`. Filter at the source to the units needed for operations instead of forwarding the entire host journal by default. The Alloy service account needs permission to read the journal; Grafana's package guidance uses the `adm` and `systemd-journal` groups, which can expose more records than a single service. Review that privilege against the VPS's data and document it. Keep labels bounded, for example `service` and `environment`, and do not promote request IDs or user values into labels.
 
-Avoid double rotation or duplicate collection. For example, rotating a file inside the container while the runtime expects an open stream can lose or retain logs unpredictably. Prefer one clearly owned collection path. Set a maximum event size, rate or volume limits where supported, retention, and a response to collector/destination failure. Ensure enough local diagnostics survive a short network outage without allowing an unbounded queue to fill the VPS disk.
+This is the shape of a journal-to-Cloud pipeline; replace the service host and tenant ID with values from the Grafana Cloud stack, and keep the token in a protected file readable only by Alloy and root:
 
-Centralized or remote log storage can preserve evidence if the VPS is lost, but it creates another privileged data store and potential cost. Encrypt transport and storage where available, restrict access, and document where copies live and when they are deleted. A monitoring service's built-in retention default is not a policy.
+```alloy
+local.file "cloud_logs_token" {
+  filename  = "/etc/alloy/secrets/grafana-cloud-logs-token"
+  is_secret = true
+}
+
+loki.source.journal "web" {
+  matches    = "_SYSTEMD_UNIT=nginx.service"
+  labels     = {service = "nginx", environment = "production"}
+  forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = "https://<your-loki-host>/loki/api/v1/push"
+
+    basic_auth {
+      username = "<your-loki-tenant-id>"
+      password = local.file.cloud_logs_token.content
+    }
+  }
+}
+```
+
+The token file must not be committed or copied into the Alloy configuration. Create a Grafana Cloud access-policy token with only the required `logs:write` scope. Check the Alloy service logs and Grafana Cloud Logs/Explore for fresh, expected records after reloading the configuration. Add parsing or redaction in Alloy only as defense in depth; prevent secrets from being emitted by the application in the first place.
+
+Container stdout/stderr is not automatically part of the systemd journal. Inspect the Docker logging driver and choose one explicit path: configure the runtime to use journald, read a bounded and permissioned log file, or use Alloy's Docker source after a security review. Access to the Docker daemon socket grants powerful control over the host; do not mount it into Alloy just for convenience. Define retention and rotation for the chosen source. Avoid double rotation or duplicate collection, which can lose or multiply records.
+
+Set maximum event size, volume limits where supported, local journal retention, remote retention, and a response to collector/destination failure. Do not assume Alloy buffers indefinitely during an Internet or Cloud outage. Test how its state, write queue, and the journal retention behave during a short interruption, without allowing telemetry to fill the VPS disk.
+
+Centralized or remote log storage can preserve evidence if the VPS is lost, but it creates another privileged data store and potential cost. Encrypt transport, restrict access, and document where copies live and when they are deleted. A monitoring service's built-in retention default is not a policy.
 
 ## Make queries answer incidents
 
@@ -59,3 +89,6 @@ Complete [Task 04 — Configure useful, bounded, privacy-safe application logs](
 - [Docker documentation — Configure logging drivers](https://docs.docker.com/engine/logging/configure/)
 - [OWASP Cheat Sheet Series — Logging](https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html)
 - [OpenTelemetry — Logs](https://opentelemetry.io/docs/concepts/signals/logs/)
+- [Grafana Alloy — `loki.source.journal`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.source.journal/)
+- [Grafana Alloy — `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/)
+- [Grafana Alloy — `loki.write`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.write/)

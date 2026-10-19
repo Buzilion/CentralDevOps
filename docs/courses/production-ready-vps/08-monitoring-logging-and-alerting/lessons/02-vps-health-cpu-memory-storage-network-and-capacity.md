@@ -36,17 +36,19 @@ Choose thresholds using both a safety floor and time-to-exhaustion. For example,
 
 Capacity has dependencies: the VPS provider may throttle CPU or storage I/O; a snapshot can temporarily consume space; filesystem expansion may require downtime; and the monitoring database itself can grow. Record the measured or provider-documented limits and the action available when each boundary is reached.
 
-## Choose collection and protect the host
+## Collect host metrics with Alloy
 
-Possible approaches include provider dashboards/agents, a lightweight host agent, or Prometheus-compatible exporters collected by an external service. Choose one path that can produce the required signals and survive the failure model. On a small VPS, adding a full metrics database, dashboard, and log store may compete with the application and create a new operational burden.
+The course's default collector is Grafana Alloy installed on the VPS as a package-managed systemd service. Alloy's `prometheus.exporter.unix` component collects Linux host metrics, `prometheus.scrape` gathers them inside Alloy, and `prometheus.remote_write` sends them to the Grafana Cloud Metrics endpoint. This avoids running a separate node-exporter listener or a metrics database on the same VPS. The exact configuration and credential handling are shown in [Lesson 05](05-metrics-collection-dashboards-and-safe-instrumentation.md).
 
-Run agents with least privilege and only the filesystem/process access they need. Restrict scrape ports to loopback, a private network, or the known collector source. Never expose a metrics endpoint that reveals process names, command arguments, filesystem layouts, host labels, or configuration to the public Internet. Avoid mounting the Docker daemon socket into a monitoring container unless its powerful access is understood and tightly constrained.
+Use the Grafana Cloud stack's own metrics endpoint and instance ID, and a write-only access-policy token. The VPS needs outbound HTTPS access to the Cloud endpoint; it does not need an inbound scrape port for this built-in exporter. If application metrics are available, add a separate scrape target bound to loopback or a private interface and forward it to the same remote-write receiver. Keep labels stable and bounded; do not attach user or request identifiers.
+
+Run Alloy with the package's dedicated service account and grant only the host access needed by the selected collectors. Verify the process's actual listeners and keep Alloy's HTTP/UI interface private. Check the host's local values against Grafana Cloud, confirm the samples are fresh, and define how Cloud alert rules respond when Alloy stops reporting. Never expose a metrics endpoint that reveals process names, filesystem layouts, host labels, or configuration to the public Internet. Avoid mounting the Docker daemon socket into a monitoring container unless its powerful access is understood and tightly constrained.
 
 Verify that host identity survives restarts and that dashboards distinguish current from stale samples. If a service stops reporting, the missing signal needs explicit treatment; it must not be plotted as zero utilization.
 
 ## Practical checkpoint
 
-Use [Task 02 — Monitor VPS resources and establish a capacity baseline](../tasks/02-monitor-vps-resources-and-establish-a-capacity-baseline.md) to capture the actual resources, collection path, and first baseline. Record values and infrastructure details only in an appropriately protected operational record.
+Use [Task 02 — Monitor VPS resources and establish a capacity baseline](../tasks/02-monitor-vps-resources-and-establish-a-capacity-baseline.md) to install Alloy, verify host metrics in Grafana Cloud, and capture the first baseline. Record values and infrastructure details only in an appropriately protected operational record.
 
 ## Knowledge check
 
@@ -57,6 +59,8 @@ Use [Task 02 — Monitor VPS resources and establish a capacity baseline](../tas
 
 ## References
 
-- [Prometheus documentation — Node exporter](https://prometheus.io/docs/guides/node-exporter/)
+- [Grafana Alloy — `prometheus.exporter.unix`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.unix/)
+- [Grafana Alloy — Install on Linux](https://grafana.com/docs/alloy/latest/set-up/install/linux/)
+- [Grafana Cloud — Monitor a Linux server](https://grafana.com/docs/learning-journeys/linux-server-integration/)
 - [Linux kernel documentation — Pressure Stall Information](https://docs.kernel.org/accounting/psi.html)
 - [Docker documentation — Resource constraints](https://docs.docker.com/engine/containers/resource_constraints/)

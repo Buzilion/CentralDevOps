@@ -24,14 +24,14 @@ Install and validate Docker Engine and the Compose plugin on the intended Ubuntu
 
 ## Acceptance criteria
 
-- [ ] Docker Engine packages come from the distribution-appropriate, signed official repository and the installed versions are recorded.
-- [ ] Engine and Compose plugin versions are available and the service is healthy after boot.
-- [ ] The `hello-world` check succeeds and leaves no running test container.
-- [ ] No unauthenticated Docker API is listening on a network interface.
-- [ ] Access to the Docker socket is restricted; no unsafe world-writable permission was applied.
-- [ ] Docker group membership is either absent or documented as privileged with a justified minimum member list.
-- [ ] SSH and the existing network policy remain functional; no demo service was published.
-- [ ] Package changes, recovery route, and remaining hardening needs are recorded without secrets.
+- [x] Docker Engine packages come from the distribution-appropriate, signed official repository and the installed versions are recorded.
+- [x] Engine and Compose plugin versions are available and the service is healthy after boot.
+- [x] The `hello-world` check succeeds and leaves no running test container.
+- [x] No unauthenticated Docker API is listening on a network interface.
+- [x] Access to the Docker socket is restricted; no unsafe world-writable permission was applied.
+- [x] Docker group membership is either absent or documented as privileged with a justified minimum member list.
+- [x] SSH and the existing network policy remain functional; no demo service was published.
+- [x] Package changes, recovery route, and remaining hardening needs are recorded without secrets.
 
 ## Deliverable
 

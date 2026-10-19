@@ -12,18 +12,19 @@ Give an operator one concise view that distinguishes user-visible service health
 
 ## Procedure
 
-1. Choose the smallest dashboard/service view that answers the monitoring contract's top operational questions. Record why the selected provider/tool fits the VPS resource, cost, access, and failure-boundary constraints.
-2. Add a top-level public availability/synthetic result with probe freshness and a recent time window. State exactly which hostname, protocol, location, status/content condition, and latency are measured.
-3. Add application error/request/latency signals when the runtime can provide them. Document whether duration is measured at proxy, app, or external client, and use bounded route/result dimensions only.
-4. Add host CPU/load, available memory or pressure, disk bytes and inodes for relevant filesystems, and restart/dependency context. Include the units and thresholds established in Task 02.
-5. Add links or queries to the corresponding logs and runbook, filtered by service and time. Ensure no panel or link includes sensitive query values or credentials.
+1. Build the operational dashboard in the Grafana Cloud stack's managed Grafana instance. Confirm that the Cloud Metrics and Logs data sources are available and review any prebuilt Linux Server integration dashboards before creating duplicate panels. Record the relevant stack plan, retention, access, and cost assumptions.
+2. Add a top-level public availability/synthetic result with probe freshness and a recent time window. Use the independent probe from Task 03 and state exactly which hostname, protocol, probe location, status/content condition, and latency are measured. Do not substitute Alloy's local host metrics for public availability.
+3. Add application error/request/latency signals from Grafana Cloud Metrics when the runtime can provide them. Document whether duration is measured at proxy, app, or external client, and use bounded route/result dimensions only.
+4. Add Alloy-collected host CPU/load, available memory or pressure, disk bytes and inodes for relevant filesystems, and restart/dependency context. Include the units and thresholds established in Task 02 and verify the series have recent samples.
+5. Add Grafana Cloud Logs queries or links for the corresponding approved sources and runbook, filtered by service and time. Ensure no panel or link includes sensitive query values or credentials.
 6. For each panel, document source, collection interval, aggregation, unit, interpretation, threshold, owner, stale-data behavior, and known blind spot. Remove decorative metrics that cannot guide an operator.
-7. Validate each panel against a local command, provider source, synthetic event, or known controlled test. Check time zone, units, current/stale behavior, filters, and aggregation. Do not induce production load or create a disk exhaustion event.
+7. Validate each panel against a local command, Cloud source, synthetic event, or known controlled test. Check time zone, units, current/stale behavior, filters, and aggregation. Confirm that missing Alloy data is not displayed as zero or healthy. Do not induce production load or create a disk exhaustion event.
 8. Review access permissions, dashboard sharing/export behavior, data retention, and monitoring resource cost. Test the alternate status path if the dashboard service is unavailable.
 
 ## Acceptance criteria
 
 - [ ] User-visible availability and internal VPS/application diagnosis appear as distinct signal groups.
+- [ ] The dashboard is hosted in Grafana Cloud and shows fresh metrics/logs from the expected Alloy and external-probe sources.
 - [ ] All panels have meaningful title, unit, source, time window, freshness, and interpretation.
 - [ ] Data has been cross-checked or exercised; no panel is accepted solely because a line is displayed.
 - [ ] Missing/stale samples are visibly different from zero or healthy state.
@@ -34,4 +35,4 @@ Give an operator one concise view that distinguishes user-visible service health
 
 ## Deliverable
 
-An access-controlled **operational dashboard** plus a sanitized panel inventory that documents source, units, freshness, interpretation, validation evidence, blind spots, and owner.
+An access-controlled **Grafana Cloud operational dashboard** plus a sanitized panel inventory that documents source, units, freshness, interpretation, validation evidence, blind spots, and owner.

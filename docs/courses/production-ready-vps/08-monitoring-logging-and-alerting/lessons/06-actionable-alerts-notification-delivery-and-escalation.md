@@ -33,6 +33,8 @@ Severity should describe response urgency and impact, not the source technology.
 
 Choose names and response targets the actual team can meet. Every alert needs an owner or rotation, primary and backup route, and escalation if unacknowledged. A shared mailbox is not ownership if nobody monitors it. Specify quiet hours and maintenance suppression carefully; silence only the expected signal for a bounded, recorded window and never suppress external availability indefinitely.
 
+For this course, create rule groups in Grafana Cloud Alerting against the Cloud-hosted metrics or logs. The evaluator and notification policy then remain independent of the VPS and Alloy process. Use external synthetic-check results for public availability and host metrics such as scrape success to diagnose collection health. Configure the rule's no-data/error behavior explicitly: no recent samples must not be treated as a healthy zero or a recovered service. Confirm the current Grafana Cloud plan supports the features and retention you intend to use.
+
 ## Make notifications useful and non-sensitive
 
 Include concise service/environment identity, alert name and severity, first-seen time, current value and threshold, affected objective, dashboard/log/runbook links, and a suggested first diagnostic step. Avoid secret values, full log lines, customer data, private key material, or public message bodies with sensitive request details. Notification systems are another data store with their own membership and retention.
@@ -43,7 +45,9 @@ Deduplicate repeated evaluations into one incident with a clear start and recove
 
 The alert path includes the metric/log source, evaluator, routing rule, integration credential, provider, recipient destination, and human response. A green “integration configured” state proves only part of it. Trigger a controlled test alert, confirm it arrives at the intended destination with safe content, acknowledge it, and confirm the recovery message. Test from a channel independent of the VPS where possible.
 
-Test negative paths as well: stop or block a test exporter, use a non-production rule, or use the provider's built-in test facility to verify stale-data and integration failure handling. Do not deliberately stop a production dependency or fill production disk just to test alerts. Keep notification credentials least-privileged, rotate them through a documented process, and avoid putting them in repository files or screenshots.
+Use Grafana Cloud contact points and notification policies for the managed path, and its test or preview facility where appropriate. Verify the actual external recipient and the alert history, not just that a rule saved successfully. If Grafana Cloud or its notification route is itself a critical dependency, record a separate status/communication path.
+
+Test negative paths as well: stop Alloy on a test VPS or disable a test target, use a non-production rule, or use Grafana Cloud's built-in test facility to verify stale-data and integration-failure handling. Do not deliberately stop a production dependency or fill production disk just to test alerts. Keep notification credentials least-privileged, rotate them through a documented process, and avoid putting them in repository files or screenshots.
 
 ## Tune without hiding incidents
 
@@ -67,3 +71,4 @@ Complete [Task 06 — Route and rehearse actionable alerts](../tasks/06-route-an
 - [Google SRE Workbook — Alerting on SLOs](https://sre.google/workbook/alerting-on-slos/)
 - [Prometheus documentation — Alerting rules](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)
 - [Prometheus documentation — Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/)
+- [Grafana Cloud — Grafana Alerting](https://grafana.com/docs/grafana-cloud/alerting-and-irm/alerting/)

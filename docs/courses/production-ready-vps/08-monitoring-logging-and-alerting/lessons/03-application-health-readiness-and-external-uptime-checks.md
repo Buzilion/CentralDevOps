@@ -43,7 +43,7 @@ An endpoint returning `200` is not a complete availability SLI if it responds be
 
 ## Separate local diagnosis from independent detection
 
-A local health check can help a process manager or deployment verify startup, but it cannot tell you that users can resolve the domain or reach the VPS. An external probe can detect those failures, but cannot identify the responsible internal component. Use both when possible and correlate timestamps.
+A local health check can help a process manager or deployment verify startup, but it cannot tell you that users can resolve the domain or reach the VPS. An external probe can detect those failures, but cannot identify the responsible internal component. Use both when possible and correlate timestamps. For this course, Grafana Cloud Synthetic Monitoring can provide the independent public probe when it is enabled for the account; otherwise use another external uptime service. The probe must run outside the monitored VPS. Alloy's local checks and host metrics remain useful for diagnosis, but cannot prove that the public route works or report a VPS outage by themselves.
 
 External services can themselves fail. Confirm probe locations, status pages, maintenance behavior, and alert deduplication. Consider using more than one location or provider for high-value services, but do not interpret several correlated checks from one network as independent evidence. A probe that checks a URL through an internal tunnel may not represent the actual public path.
 
@@ -63,3 +63,4 @@ Complete [Task 03 — Verify application health locally and from outside the VPS
 - [Kubernetes documentation — Liveness, Readiness, and Startup Probes](https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/)
 - [Prometheus documentation — Monitoring Docker container metrics](https://prometheus.io/docs/guides/cadvisor/)
 - [OWASP Cheat Sheet Series — REST Security](https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html)
+- [Grafana Cloud — Synthetic Monitoring](https://grafana.com/docs/grafana-cloud/testing/synthetic-monitoring/)

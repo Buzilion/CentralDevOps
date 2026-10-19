@@ -24,13 +24,49 @@ High-cardinality labels can overwhelm memory, storage, query performance, and co
 
 Expose metrics only to the intended collector over loopback, private networking, or a tightly restricted source allowlist. Keep the endpoint unauthenticated only when the network boundary itself is sufficient and documented; otherwise use the collector's supported secure transport/authentication. Never publish a metrics endpoint on a public interface just because it returns no passwords.
 
-## Choose a collection topology
+## Use Alloy to send metrics to Grafana Cloud
 
-Metrics can be collected by a provider agent, a hosted service, or a self-managed collector. A pull collector periodically scrapes an endpoint; a push agent sends data to a remote service. Select based on reachability, reliability, credential model, cost, retention, and failure boundaries. For a single VPS, avoid running a resource-heavy time-series database unless you have a clear need and capacity plan.
+The course's default path runs Grafana Alloy on the VPS as a package-managed systemd service. The `prometheus.exporter.unix` component collects Linux host metrics without exposing a separate exporter port; `prometheus.scrape` gathers them locally inside Alloy, and `prometheus.remote_write` sends them to Grafana Cloud Metrics. Use the metrics endpoint and instance ID from the Grafana Cloud stack. The following illustrates the component wiring; replace the placeholders, create the token file, and review the generated or customized configuration before enabling it:
 
-Keep collection separate from the service's critical request path. A metrics exporter should not block application requests when its backend is unreachable. Local buffering must have bounded size and a defined drop/backoff policy. Scrape intervals, metric retention, and label count all affect resource use. Record the expected overhead and verify it under real conditions.
+```alloy
+local.file "metrics_token" {
+  filename  = "/etc/alloy/secrets/grafana-cloud-metrics-token"
+  is_secret = true
+}
 
-Treat absent samples as missing data, not zero. Show sample age or collection health, and handle counter resets and exporter restarts. Compare metrics and logs using synchronized time, stable service identity, and release metadata.
+prometheus.exporter.unix "host" {
+  include_exporter_metrics = true
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+  external_labels = {environment = "production"}
+
+  endpoint {
+    url = "https://<your-metrics-host>/api/prom/push"
+
+    basic_auth {
+      username = "<your-metrics-instance-id>"
+      password = local.file.metrics_token.content
+    }
+  }
+}
+```
+
+The token file must be readable by the Alloy service account and root only. Create a Grafana Cloud access-policy token with the minimum `metrics:write` scope; never paste it into this configuration, Git, or a screenshot. For applications that expose metrics, add a separate `prometheus.scrape` component for a loopback/private target and forward it to the same Cloud receiver. Keep the exporter and application endpoint off public interfaces.
+
+If a metric needs filtering or label normalization, place `prometheus.relabel` between the scrape and remote-write components and verify the resulting series in Grafana Cloud. For logs, `loki.process` can parse or filter records before `loki.write`. Keep transformations small, bounded, and documented; they do not replace preventing sensitive data at the source.
+
+Grafana Cloud's Linux Server integration can provide guided setup, prebuilt dashboards, and alerting when available on the account. If using it, inspect the generated Alloy configuration and avoid collecting the same host or logs twice with a second manual pipeline. Whether using the guided integration or a reviewed custom configuration, use Grafana Cloud's metrics and logs backends rather than installing a time-series database and Grafana UI on the VPS.
+
+For the Linux package, the default Alloy configuration file is `/etc/alloy/config.alloy`; the service stores component state under `/var/lib/alloy/data`. Protect that state directory and monitor disk use, especially while Cloud is unreachable. After editing a configuration, reload Alloy and inspect its systemd status and journal logs. Keep outbound HTTPS access to the Cloud endpoints working, but do not open an inbound exporter port. Restrict Alloy's own HTTP/UI interface to a trusted local/private path.
+
+Scrape intervals, Cloud retention, ingestion limits, label count, and Alloy's local state all affect resource use and cost. Record the expected overhead and verify it under real conditions. Treat absent samples as missing data, not zero. In Grafana Cloud, verify that `up` and the expected host metrics have recent samples; create an alert for missing/stale telemetry rather than silently displaying a healthy zero. Compare metrics and logs using synchronized time, stable service identity, and release metadata.
 
 ## Build a dashboard for decisions
 
@@ -44,7 +80,7 @@ Validate each panel with a known value, controlled event, or independent command
 
 Add instrumentation at meaningful boundaries, such as the HTTP server and essential background work. Do not make application success depend on telemetry export. Keep metric exposition and library dependencies current and compatible with the inspected runtime. Test that metrics are updated on both success and failure and that labels are constrained.
 
-For a first VPS, a simple provider dashboard plus external uptime and useful runtime logs may be adequate. Add a dedicated metrics collector or Grafana/Prometheus-compatible stack only when it improves diagnosis enough to justify operating, securing, backing up, and upgrading it.
+For a first VPS, the Alloy-to-Grafana-Cloud path gives the operator a managed metrics/logs destination and dashboard without hosting a database or Grafana UI on the monitored machine. Keep application instrumentation small and add traces only when a concrete diagnostic need justifies their cost and complexity.
 
 ## Practical checkpoint
 
@@ -62,3 +98,9 @@ Complete [Task 05 — Build an operational dashboard and validate its signals](.
 - [Prometheus documentation — Metric types](https://prometheus.io/docs/concepts/metric_types/)
 - [Prometheus documentation — Instrumentation practices](https://prometheus.io/docs/practices/instrumentation/)
 - [Prometheus documentation — Naming](https://prometheus.io/docs/practices/naming/)
+- [Grafana Alloy — `prometheus.exporter.unix`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.exporter.unix/)
+- [Grafana Alloy — `prometheus.scrape`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.scrape/)
+- [Grafana Alloy — `prometheus.relabel`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.relabel/)
+- [Grafana Alloy — `prometheus.remote_write`](https://grafana.com/docs/alloy/latest/reference/components/prometheus/prometheus.remote_write/)
+- [Grafana Alloy — `loki.process`](https://grafana.com/docs/alloy/latest/reference/components/loki/loki.process/)
+- [Grafana Cloud — Monitor a Linux server](https://grafana.com/docs/learning-journeys/linux-server-integration/)
