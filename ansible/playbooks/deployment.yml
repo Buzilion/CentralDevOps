@@ -1,0 +1,31 @@
+---
+- name: Deploy application
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    image_tag: "{{ lookup('ansible.builtin.env', 'IMAGE_TAG') }}"
+    app_image: "{{ lookup('ansible.builtin.env', 'APP_IMAGE') }}"
+    app_project_name: "{{ lookup('ansible.builtin.env', 'APP_PROJECT_NAME') }}"
+    app_service_name: "{{ lookup('ansible.builtin.env', 'APP_SERVICE_NAME') }}"
+    app_deploy_directory: "{{ lookup('ansible.builtin.env', 'APP_DEPLOY_DIRECTORY') }}"
+    app_proxy_network: "{{ lookup('ansible.builtin.env', 'APP_PROXY_NETWORK') }}"
+    app_healthcheck_path: "{{ lookup('ansible.builtin.env', 'APP_HEALTHCHECK_PATH') }}"
+    app_runtime_environment: "{{ lookup('ansible.builtin.env', 'APP_RUNTIME_ENVIRONMENT_JSON') | default('{}', true) | from_json }}"
+  pre_tasks:
+    - name: Validate deployment settings
+      ansible.builtin.assert:
+        that:
+          - image_tag is match('^[0-9a-f]{40}$')
+          - app_image is match('^ghcr[.]io/[a-z0-9][a-z0-9._/-]*$')
+          - app_project_name is match('^[a-z0-9][a-z0-9_-]*$')
+          - app_service_name is match('^[a-z0-9][a-z0-9_-]*$')
+          - app_deploy_directory is match('^/[A-Za-z0-9._/-]+$')
+          - "'..' not in app_deploy_directory.split('/')"
+          - app_proxy_network is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+          - app_healthcheck_path == '' or app_healthcheck_path is match('^/.*$')
+          - app_runtime_environment is mapping
+        fail_msg: The image tag or deployment settings are invalid.
+      no_log: true
+  roles:
+    - app_deployment

@@ -1,0 +1,22 @@
+name: "{{ app_project_name }}"
+
+services:
+  {{ app_service_name }}:
+    image: "{{ app_image }}:{{ image_tag }}"
+    platform: linux/amd64
+    environment:
+{% if app_runtime_environment %}
+{% for key in app_runtime_environment.keys() | sort %}
+      {{ key | to_json }}: {{ ('${' ~ key ~ '}') | to_json }}
+{% endfor %}
+{% else %}
+      {}
+{% endif %}
+    restart: unless-stopped
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: "{{ app_proxy_network }}"

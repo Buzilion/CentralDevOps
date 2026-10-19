@@ -1,0 +1,13 @@
+---
+- name: Bootstrap application VPS hosts
+  hosts: customer_builder_engine
+  gather_facts: true
+  roles:
+    - role: ssh
+      become: false
+    - role: base
+      become: true
+    - role: security
+      become: true
+    - role: docker
+      become: true

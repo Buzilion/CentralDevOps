@@ -1,0 +1,169 @@
+---
+- name: Check Docker Compose availability
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - version
+  changed_when: false
+
+- name: Ensure application deployment directory exists
+  ansible.builtin.file:
+    path: "{{ app_deploy_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render application Compose manifest
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ app_deploy_directory }}/compose.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect shared proxy network
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - inspect
+      - "{{ app_proxy_network }}"
+  register: proxy_network
+  changed_when: false
+  failed_when: false
+
+- name: Create shared proxy network when absent
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - create
+      - "{{ app_proxy_network }}"
+  when: proxy_network.rc != 0
+
+- name: Validate deployment Compose configuration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - config
+      - --quiet
+  args:
+    chdir: "{{ app_deploy_directory }}"
+  environment: "{{ app_runtime_environment }}"
+  changed_when: false
+  no_log: true
+
+- name: Authenticate and pull the requested GHCR image
+  block:
+    - name: Log in to GHCR using the short-lived workflow token
+      ansible.builtin.command:
+        argv:
+          - docker
+          - login
+          - ghcr.io
+          - --username
+          - "{{ lookup('ansible.builtin.env', 'GHCR_USERNAME') }}"
+          - --password-stdin
+        stdin: "{{ lookup('ansible.builtin.env', 'GHCR_TOKEN') }}"
+        stdin_add_newline: false
+      register: ghcr_login
+      no_log: true
+
+    - name: Pull the exact immutable image tag
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - pull
+          - "{{ app_service_name }}"
+      args:
+        chdir: "{{ app_deploy_directory }}"
+      environment: "{{ app_runtime_environment }}"
+      no_log: true
+  always:
+    - name: Remove temporary GHCR credentials from the VPS
+      ansible.builtin.command:
+        argv:
+          - docker
+          - logout
+          - ghcr.io
+      when: ghcr_login is defined and ghcr_login.rc == 0
+      changed_when: false
+      no_log: true
+
+- name: Start the pulled image without building or pulling again
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - up
+      - --detach
+      - --no-build
+      - --pull
+      - never
+      - "{{ app_service_name }}"
+  args:
+    chdir: "{{ app_deploy_directory }}"
+  environment: "{{ app_runtime_environment }}"
+  no_log: true
+
+- name: Find the running application container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - ps
+      - --quiet
+      - "{{ app_service_name }}"
+  args:
+    chdir: "{{ app_deploy_directory }}"
+  environment: "{{ app_runtime_environment }}"
+  register: app_container
+  changed_when: false
+  retries: 15
+  delay: 2
+  until: app_container.stdout | trim | length > 0
+  no_log: true
+
+- name: Wait for the image healthcheck to report healthy
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.State.Health.Status{{ '}}' }}"
+      - "{{ app_container.stdout | trim }}"
+  register: app_health
+  changed_when: false
+  retries: 45
+  delay: 2
+  until: app_health.stdout == "healthy"
+  no_log: true
+
+- name: Verify the configured HTTP health endpoint returns HTTP 200
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - exec
+      - -T
+      - "{{ app_service_name }}"
+      - node
+      - -e
+      - >-
+        fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + {{ app_healthcheck_path | to_json }})
+        .then((response) => process.exit(response.status === 200 ? 0 : 1))
+        .catch((error) => { console.error(error); process.exit(1); })
+  args:
+    chdir: "{{ app_deploy_directory }}"
+  environment: "{{ app_runtime_environment }}"
+  register: app_http_health
+  changed_when: false
+  retries: 15
+  delay: 2
+  until: app_http_health.rc == 0
+  when: app_healthcheck_path | length > 0
+  no_log: true
