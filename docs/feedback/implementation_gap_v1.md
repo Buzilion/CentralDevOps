@@ -15,8 +15,8 @@ The current mappings also span both `staging` and `production` at the same addre
 For each verified physical host, configure the protected `Staging` or `Production` Environment with:
 
 - `<NORMALIZED_HOST_ID>_PASSWORD` for the provider-created bootstrap account's initial SSH login (for example, `BUZ_PROD_1_PASSWORD`). Do not put the password in inventory, dispatch inputs, or this document.
-- `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS`, containing an independently verified pinned host key for the selected `ansible_host`.
-- `VPS_SSH_PRIVATE_KEY` and `STG_SSH_PUBLIC_KEY` or `PROD_SSH_PUBLIC_KEY` for a separate Ed25519 deploy key pair.
+- For Staging, `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS`; for Production, `BUZ_PROD_KNOWN_HOSTS`, containing an independently verified pinned host key for the selected `ansible_host`. The workflow does not generate the trusted host key.
+- For Staging, `VPS_SSH_PRIVATE_KEY` and `STG_SSH_PUBLIC_KEY`; for Production, `<NORMALIZED_HOST_ID>_SSH_PRIVATE_KEY` and `<NORMALIZED_HOST_ID>_SSH_PUBLIC_KEY` for a separate Ed25519 deploy key pair.
 
 The workflow uses the bootstrap password for a fresh VPS, installs and verifies the deploy key, then disables SSH password and keyboard-interactive authentication. It falls back to the deploy key for subsequent runs on an already-hardened VPS. The deploy private key must be unencrypted and match its public key. Confirm that the `Staging` and `Production` GitHub Environments exist and that Production approval/deployment-branch restrictions are configured. The workflow limits `apply` to the repository default branch, but repository/environment protection settings cannot be verified from this code.
 

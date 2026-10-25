@@ -395,7 +395,19 @@ def main() -> int:
 
     normalized_host_id = bootstrap_host_id.upper().replace("-", "_")
     deploy_public_key_variable = (
-        "STG_SSH_PUBLIC_KEY" if target_environment == "staging" else "PROD_SSH_PUBLIC_KEY"
+        "STG_SSH_PUBLIC_KEY"
+        if target_environment == "staging"
+        else f"{normalized_host_id}_SSH_PUBLIC_KEY"
+    )
+    deploy_private_key_secret = (
+        "VPS_SSH_PRIVATE_KEY"
+        if target_environment == "staging"
+        else f"{normalized_host_id}_SSH_PRIVATE_KEY"
+    )
+    bootstrap_known_hosts_variable = (
+        f"BOOTSTRAP_{normalized_host_id}_SSH_KNOWN_HOSTS"
+        if target_environment == "staging"
+        else "BUZ_PROD_KNOWN_HOSTS"
     )
     outputs = {
         "bootstrap_inventory": inventory_path,
@@ -423,10 +435,9 @@ def main() -> int:
         "bootstrap_password_secret": (
             f"{normalized_host_id}_PASSWORD"
         ),
-        "bootstrap_known_hosts_variable": (
-            f"BOOTSTRAP_{normalized_host_id}_SSH_KNOWN_HOSTS"
-        ),
+        "bootstrap_known_hosts_variable": bootstrap_known_hosts_variable,
         "deploy_public_key_variable": deploy_public_key_variable,
+        "deploy_private_key_secret": deploy_private_key_secret,
     }
 
     if errors:

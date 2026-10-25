@@ -81,11 +81,11 @@ Do not derive a hostname from an alias or IP address. DNS A and any configured A
 ## 3. Preconditions and credential handling
 
 - For a fresh VPS, the first SSH connection must use the provider-created bootstrap username from approved inventory and its password from the protected `Staging` or `Production` GitHub Environment. Name the per-host secret `<NORMALIZED_HOST_ID>_PASSWORD`, where the stable host ID is uppercase with hyphens replaced by underscores (for example, `buz-prod-1` becomes `BUZ_PROD_1_PASSWORD`).
-- Never put the bootstrap password in inventory, workflow-dispatch inputs, command-line arguments, logs, artifacts, or summaries. Keep the independently verified SSH host-key pin in `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS`.
+- Never put the bootstrap password in inventory, workflow-dispatch inputs, command-line arguments, logs, artifacts, or summaries. Keep the independently verified SSH host-key pin in `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS` for Staging or `BUZ_PROD_KNOWN_HOSTS` for Production. The workflow must not trust a host key scanned during that same run.
 - Attempt the protected bootstrap password first. If password authentication is unavailable, allow a deploy-key connection for an already-bootstrapped VPS; otherwise stop before remote changes and report which credential configuration is missing without exposing secret values.
 - The provider bootstrap account is distinct from the `deploy` account. Do not assume its username is `ubuntu` or use the deployment account as the initial bootstrap account.
 - Pin and verify the VPS SSH host key. Do not trust an unverified key collected during the same workflow run.
-- Store the `deploy` public key in a GitHub Environment variable or another approved non-secret configuration store. Store its matching private key only in a protected GitHub Environment secret so the workflow can verify final key-based access.
+- Store the `deploy` public key in `STG_SSH_PUBLIC_KEY` for Staging or `<NORMALIZED_HOST_ID>_SSH_PUBLIC_KEY` for Production. Store its matching private key only in the protected `VPS_SSH_PRIVATE_KEY` Staging secret or `<NORMALIZED_HOST_ID>_SSH_PRIVATE_KEY` Production secret so the workflow can verify final key-based access.
 - Store service credentials only in protected GitHub Environment secrets. Do not print secrets, put them in command-line arguments, include them in artifacts, or expose them in workflow summaries.
 - Use minimum required workflow permissions. Temporary credential files must have restrictive permissions and be removed when the job ends.
 - If a selected service requires missing credentials or configuration, fail before applying changes and identify the missing configuration without revealing secret values.

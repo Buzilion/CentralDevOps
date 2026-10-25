@@ -70,6 +70,7 @@ jobs:
       password_secret: ${{ steps.validate.outputs.bootstrap_password_secret }}
       known_hosts_variable: ${{ steps.validate.outputs.bootstrap_known_hosts_variable }}
       deploy_public_key_variable: ${{ steps.validate.outputs.deploy_public_key_variable }}
+      deploy_private_key_secret: ${{ steps.validate.outputs.deploy_private_key_secret }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -166,7 +167,7 @@ jobs:
           BOOTSTRAP_SHARED_HOST_COLLISION: ${{ needs.preflight.outputs.shared_host_collision }}
           BOOTSTRAP_PASSWORD: ${{ secrets[needs.preflight.outputs.password_secret] }}
           BOOTSTRAP_KNOWN_HOSTS: ${{ vars[needs.preflight.outputs.known_hosts_variable] }}
-          DEPLOY_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          DEPLOY_PRIVATE_KEY: ${{ secrets[needs.preflight.outputs.deploy_private_key_secret] }}
           DEPLOY_PUBLIC_KEY: ${{ vars[needs.preflight.outputs.deploy_public_key_variable] }}
           SUMOPOD_FIREWALL_REVIEWED: ${{ vars.SUMOPOD_FIREWALL_REVIEWED }}
           SUMOPOD_SSH_SOURCE_RESTRICTED: ${{ vars.SUMOPOD_SSH_SOURCE_RESTRICTED }}

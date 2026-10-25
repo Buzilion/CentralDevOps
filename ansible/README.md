@@ -34,8 +34,8 @@ The playbook `playbooks/bootstrap.yml` orchestrates reusable roles and task file
 Create protected `Staging` and `Production` Environments in the CentralDevOps repository. Configure separate bootstrap and deploy key pairs in each applicable Environment:
 
 **Variables**
-- `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS` — independently verified pinned `known_hosts` entry for the inventory address.
-- `STG_SSH_PUBLIC_KEY` or `PROD_SSH_PUBLIC_KEY` — deploy account's Ed25519 public key.
+- For Staging, `BOOTSTRAP_<NORMALIZED_HOST_ID>_SSH_KNOWN_HOSTS`; for Production, `BUZ_PROD_KNOWN_HOSTS` — independently verified pinned `known_hosts` entry for the inventory address. The workflow maps the selected Environment variable's stored value to the runner's `BOOTSTRAP_KNOWN_HOSTS`; it does not generate a trusted host key.
+- For Staging, `STG_SSH_PUBLIC_KEY`; for Production, `<NORMALIZED_HOST_ID>_SSH_PUBLIC_KEY` — deploy account's Ed25519 public key.
 - `SUMOPOD_FIREWALL_REVIEWED` — `true` only after checking provider rules for the physical VPS.
 - `SUMOPOD_SSH_SOURCE_RESTRICTED` — `true` only when provider SSH sources are restricted to approved management egress.
 - `SUMOPOD_PUBLIC_SSH_EXCEPTION_APPROVED` — `true` only for an owner-approved public-source exception.
@@ -43,7 +43,7 @@ Create protected `Staging` and `Production` Environments in the CentralDevOps re
 
 **Secrets**
 - `<NORMALIZED_HOST_ID>_PASSWORD` — password for the provider-created bootstrap account, used for initial SSH access to a fresh VPS (for example, `BUZ_PROD_1_PASSWORD` for `bootstrap_host_id: buz-prod-1`).
-- `VPS_SSH_PRIVATE_KEY` — deploy key matching `STG_SSH_PUBLIC_KEY` or `PROD_SSH_PUBLIC_KEY`.
+- For Staging, `VPS_SSH_PRIVATE_KEY`; for Production, `<NORMALIZED_HOST_ID>_SSH_PRIVATE_KEY` — deploy key matching the selected public-key variable.
 
 `<NORMALIZED_HOST_ID>` is the uppercase `bootstrap_host_id` with hyphens replaced by underscores. Store no credentials in inventory or dispatch inputs. The password is passed only through the protected runner environment and temporary permission-restricted files; remove its secret after initial setup if subsequent runs should use deploy-key access only.
 

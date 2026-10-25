@@ -94,6 +94,12 @@ class ValidateBootstrapRequestTests(unittest.TestCase):
         self.assertIn("github_environment=Staging", outputs)
         self.assertIn("bootstrap_effective_services_json=[]", outputs)
         self.assertIn(
+            "bootstrap_known_hosts_variable=BOOTSTRAP_BUZ_STG_1_SSH_KNOWN_HOSTS",
+            outputs,
+        )
+        self.assertIn("deploy_public_key_variable=STG_SSH_PUBLIC_KEY", outputs)
+        self.assertIn("deploy_private_key_secret=VPS_SSH_PRIVATE_KEY", outputs)
+        self.assertIn(
             "bootstrap_password_secret=BUZ_STG_1_PASSWORD",
             outputs,
         )
@@ -121,6 +127,9 @@ class ValidateBootstrapRequestTests(unittest.TestCase):
 
         self.assertEqual(result, 0, stdout)
         self.assertIn("bootstrap_password_secret=BUZ_PROD_1_PASSWORD", outputs)
+        self.assertIn("bootstrap_known_hosts_variable=BUZ_PROD_KNOWN_HOSTS", outputs)
+        self.assertIn("deploy_public_key_variable=BUZ_PROD_1_SSH_PUBLIC_KEY", outputs)
+        self.assertIn("deploy_private_key_secret=BUZ_PROD_1_SSH_PRIVATE_KEY", outputs)
 
     def test_nginx_adds_docker_and_validates_the_route_dns(self):
         with patch.object(
