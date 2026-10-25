@@ -1,0 +1,96 @@
+---
+- name: Validate the single-host bootstrap contract
+  ansible.builtin.assert:
+    that:
+      - bootstrap_mode in ['validate', 'apply']
+      - inventory_hostname == bootstrap_target_host
+      - bootstrap_host_id is match('^[a-z0-9]+(?:-[a-z0-9]+)*$')
+      - bootstrap_user is string
+      - bootstrap_user | length > 0
+      - bootstrap_user != bootstrap_deploy_user
+      - bootstrap_connection_mode in ['password', 'deploy-key']
+      - bootstrap_connection_mode != 'password' or bootstrap_connection_user == bootstrap_user
+      - bootstrap_connection_mode != 'deploy-key' or bootstrap_connection_user == bootstrap_deploy_user
+      - bootstrap_environment in ['staging', 'production']
+      - bootstrap_application in ['customer-builder-engine', 'outbound-marketing']
+      - bootstrap_effective_services is sequence
+      - bootstrap_requested_services is sequence
+      - bootstrap_report_path is string
+      - bootstrap_report_path | length > 0
+      - bootstrap_deploy_public_key is string
+      - bootstrap_deploy_public_key | length > 0
+      - bootstrap_deploy_private_key_file is string
+      - bootstrap_deploy_private_key_file | length > 0
+      - bootstrap_known_hosts_file is string
+      - bootstrap_known_hosts_file | length > 0
+      - "'nginx' not in bootstrap_effective_services or 'docker' in bootstrap_effective_services"
+      - "'postgresql' not in bootstrap_effective_services or 'docker' in bootstrap_effective_services"
+      - "'postgresql' not in bootstrap_requested_services or bootstrap_application == 'outbound-marketing'"
+    fail_msg: The selected host or bootstrap configuration does not satisfy the inventory contract.
+
+- name: Validate apply-only manual safety gates
+  ansible.builtin.assert:
+    that:
+      - bootstrap_provider_firewall_reviewed | bool
+      - bootstrap_sumopod_ssh_source_restricted | bool or bootstrap_public_ssh_exception_approved | bool
+      - not bootstrap_shared_host_collision | bool or bootstrap_shared_host_approved | bool
+    fail_msg: A required provider-firewall or shared-host approval is missing.
+  when: bootstrap_mode == 'apply'
+
+- name: Validate optional service configuration before any remote mutation
+  ansible.builtin.assert:
+    that:
+      - bootstrap_docker_ce_package_version | length > 0
+      - bootstrap_docker_cli_package_version | length > 0
+      - bootstrap_containerd_package_version | length > 0
+      - bootstrap_buildx_package_version | length > 0
+      - bootstrap_compose_package_version | length > 0
+    fail_msg: Approved exact Docker package versions are required.
+  when: "'docker' in bootstrap_effective_services"
+
+- name: Validate immutable Nginx images and route
+  ansible.builtin.assert:
+    that:
+      - bootstrap_nginx_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_certbot_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_route_fqdn == bootstrap_routes[bootstrap_application][bootstrap_environment].fqdn
+    fail_msg: Nginx requires approved immutable images and the inventory's explicit route.
+  when: "'nginx' in bootstrap_effective_services"
+
+- name: Validate PostgreSQL recovery prerequisites
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgres_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_aws_cli_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_postgresql_db_password | length > 0
+      - bootstrap_s3_access_key_id | length > 0
+      - bootstrap_s3_secret_access_key | length > 0
+      - bootstrap_s3_restore_access_key_id | length > 0
+      - bootstrap_s3_restore_secret_access_key | length > 0
+      - bootstrap_postgres_backup_policy_verified | bool
+    fail_msg: PostgreSQL apply is blocked until immutable images and the verified backup/recovery policy are configured.
+  no_log: true
+  when: "'postgresql' in bootstrap_effective_services"
+
+- name: Validate Alloy package, credentials, and delivery approval
+  ansible.builtin.assert:
+    that:
+      - bootstrap_alloy_package_version | length > 0
+      - bootstrap_grafana_prometheus_url | length > 0
+      - bootstrap_grafana_prometheus_user | length > 0
+      - bootstrap_grafana_loki_url | length > 0
+      - bootstrap_grafana_loki_user | length > 0
+      - bootstrap_grafana_tempo_url | length > 0
+      - bootstrap_grafana_tempo_user | length > 0
+      - bootstrap_grafana_otlp_endpoint | length > 0
+      - bootstrap_grafana_instance_id | length > 0
+      - bootstrap_grafana_api_token | length > 0
+      - bootstrap_alloy_delivery_verified | bool
+    fail_msg: Alloy requires approved Grafana configuration and delivery verification.
+  no_log: true
+  when: "'alloy' in bootstrap_effective_services"
+
+- name: Resolve the route configuration for this host
+  ansible.builtin.set_fact:
+    bootstrap_route: "{{ bootstrap_routes[bootstrap_application][bootstrap_environment] }}"
+  when: "'nginx' in bootstrap_effective_services"

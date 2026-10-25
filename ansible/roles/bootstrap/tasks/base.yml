@@ -1,0 +1,202 @@
+---
+- name: Refresh apt metadata before inspecting updates
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 0
+
+- name: Replace the preflight package-update note with the apply result
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        | reject('search', 'Package updates are available')
+        | list
+      }}
+
+- name: Simulate the safe package update transaction
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/apt-get
+      - --simulate
+      - upgrade
+  register: bootstrap_apply_package_simulation
+  changed_when: false
+
+- name: Record the package transaction proposed for apply
+  ansible.builtin.set_fact:
+    bootstrap_apply_update_candidates: >-
+      {{
+        bootstrap_apply_package_simulation.stdout_lines
+        | select('match', '^Inst ')
+        | list
+      }}
+    bootstrap_apply_update_package_names: >-
+      {{
+        bootstrap_apply_package_simulation.stdout
+        | regex_findall('(?m)^Inst\\s+(\\S+)')
+      }}
+
+- name: Identify optional service packages in the proposed transaction
+  ansible.builtin.set_fact:
+    bootstrap_optional_service_update_packages: >-
+      {{
+        bootstrap_apply_update_package_names
+        | select('match', '^(docker(?:-.*|\\.io)?|containerd(?:\\.io)?|alloy|nginx(?:-.*)?|postgresql(?:-.*)?)$')
+        | list
+      }}
+
+- name: Read the approved maintenance-window hour
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/date
+      - +%H
+  environment:
+    TZ: Asia/Singapore
+  register: bootstrap_maintenance_hour
+  changed_when: false
+
+- name: Apply safe package updates only during the approved maintenance hour
+  ansible.builtin.apt:
+    upgrade: safe
+    update_cache: false
+  register: bootstrap_apply_package_upgrade
+  when:
+    - bootstrap_apply_update_candidates | length > 0
+    - bootstrap_optional_service_update_packages | length == 0
+    - bootstrap_maintenance_hour.stdout == '00'
+
+- name: Defer package updates outside the approved maintenance hour
+  ansible.builtin.set_fact:
+    bootstrap_package_updates_deferred: true
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Safe package updates were deferred outside 00:00-00:59 Asia/Singapore.']
+      }}
+  when:
+    - bootstrap_apply_update_candidates | length > 0
+    - bootstrap_optional_service_update_packages | length == 0
+    - bootstrap_maintenance_hour.stdout != '00'
+
+- name: Defer the full package transaction when optional service pins are involved
+  ansible.builtin.set_fact:
+    bootstrap_package_updates_deferred: true
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + [
+            'System package updates were deferred because the proposed transaction includes optional-service packages managed by explicit pins: '
+            + (bootstrap_optional_service_update_packages | join(', '))
+            + '.'
+          ]
+      }}
+  when: bootstrap_optional_service_update_packages | length > 0
+
+- name: Install the minimum host baseline
+  ansible.builtin.apt:
+    name: "{{ bootstrap_base_packages }}"
+    state: present
+    update_cache: false
+
+- name: Configure Fail2ban SSH protection
+  ansible.builtin.template:
+    src: fail2ban-sshd.local.j2
+    dest: "{{ bootstrap_fail2ban_jail }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_fail2ban_config
+
+- name: Validate Fail2ban configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/fail2ban-client
+      - -t
+  changed_when: false
+
+- name: Enable and start Fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    enabled: true
+    state: "{{ 'restarted' if bootstrap_fail2ban_config.changed else 'started' }}"
+
+- name: Recheck pending reboot state after package operations
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: bootstrap_pending_reboot_after_updates
+
+- name: Read package names requiring a reboot
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - /var/run/reboot-required.pkgs
+  register: bootstrap_pending_reboot_packages_after_updates
+  failed_when: false
+  changed_when: false
+  when: bootstrap_pending_reboot_after_updates.stat.exists
+
+- name: Record package update and pending reboot status
+  ansible.builtin.set_fact:
+    bootstrap_pending_reboot: "{{ bootstrap_pending_reboot_after_updates.stat.exists }}"
+    bootstrap_package_updates_deferred: "{{ bootstrap_package_updates_deferred | default(false) }}"
+    bootstrap_pending_reboot_packages: >-
+      {{ bootstrap_pending_reboot_packages_after_updates.stdout_lines | default([]) }}
+    bootstrap_warnings: >-
+      {{ bootstrap_warnings | reject('search', 'A reboot is pending;') | list }}
+
+- name: Enable daily APT package-list updates without unattended installs
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "0";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Disable automatic package upgrades and reboots
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/99buzilion-unattended-upgrades
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect effective APT update and reboot settings
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/apt-config
+      - dump
+  register: bootstrap_apt_configuration
+  changed_when: false
+
+- name: Require automatic package installs and reboots to remain disabled
+  ansible.builtin.assert:
+    that:
+      - bootstrap_apt_configuration.stdout is search('(?m)^APT::Periodic::Update-Package-Lists "1";')
+      - bootstrap_apt_configuration.stdout is search('(?m)^APT::Periodic::Unattended-Upgrade "0";')
+      - bootstrap_apt_configuration.stdout is search('(?m)^Unattended-Upgrade::Automatic-Reboot "false";')
+      - bootstrap_apt_configuration.stdout is search('(?m)^Unattended-Upgrade::Automatic-Reboot-WithUsers "false";')
+    fail_msg: Effective APT settings do not keep unattended package installs and automatic reboots disabled.
+
+- name: Record pending reboot for a separate manual maintenance action
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['A reboot is pending; the host was not rebooted. Use a separate approved manual maintenance process.']
+      }}
+  when: bootstrap_pending_reboot | bool
+
+- name: Report pending reboot status
+  ansible.builtin.debug:
+    msg: "BOOTSTRAP_PENDING_REBOOT=true"
+  when: bootstrap_pending_reboot | bool
+
+- name: Report no pending reboot
+  ansible.builtin.debug:
+    msg: "BOOTSTRAP_PENDING_REBOOT=false"
+  when: not bootstrap_pending_reboot | bool

@@ -1,17 +1,16 @@
-customer_builder_engine:
+customer-builder-engine:
   children:
-    development:
-      hosts:
-        buz-dev-cbe-1:
-          ansible_host: 43.157.247.221
-          ansible_user: deploy
     staging:
       hosts:
         buz-staging-cbe-1:
           ansible_host: 43.157.247.221
           ansible_user: deploy
+          bootstrap_user: ubuntu
+          bootstrap_host_id: buz-stg-1
     production:
       hosts:
         buz-prod-cbe-1:
           ansible_host: 43.157.247.221
           ansible_user: deploy
+          bootstrap_user: ubuntu
+          bootstrap_host_id: buz-prod-1

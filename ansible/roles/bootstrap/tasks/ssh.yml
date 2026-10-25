@@ -1,0 +1,107 @@
+---
+- name: Record whether a managed SSH drop-in already exists
+  ansible.builtin.stat:
+    path: "{{ bootstrap_ssh_dropin }}"
+  register: bootstrap_ssh_dropin_before
+
+- name: Back up the previous managed SSH drop-in
+  ansible.builtin.copy:
+    src: "{{ bootstrap_ssh_dropin }}"
+    dest: "{{ bootstrap_ssh_dropin }}.bootstrap-backup"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  when: bootstrap_ssh_dropin_before.stat.exists
+
+- name: Apply and verify SSH hardening with rollback on failure
+  block:
+    - name: Stage the SSH hardening drop-in after deploy access was verified
+      ansible.builtin.copy:
+        dest: "{{ bootstrap_ssh_dropin }}"
+        content: |
+          # Managed by CentralDevOps bootstrap.
+          PubkeyAuthentication yes
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PermitRootLogin no
+          MaxAuthTries 3
+          AllowUsers {{ bootstrap_deploy_user }}
+        owner: root
+        group: root
+        mode: "0644"
+        validate: /usr/sbin/sshd -t -f %s
+      register: bootstrap_ssh_config_result
+
+    - name: Validate the complete effective SSH configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/sshd
+          - -t
+      changed_when: false
+
+    - name: Reload SSH after validated hardening
+      ansible.builtin.service:
+        name: ssh
+        state: "{{ 'reloaded' if bootstrap_ssh_config_result.changed else 'started' }}"
+
+    - name: Verify effective SSH authentication policy
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/sshd
+          - -T
+          - -C
+          - "user={{ bootstrap_deploy_user }},host=localhost,addr=127.0.0.1"
+      register: bootstrap_effective_sshd_config
+      changed_when: false
+
+    - name: Require key-only SSH and a deploy-only allowlist
+      ansible.builtin.assert:
+        that:
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^pubkeyauthentication yes$')
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^passwordauthentication no$')
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^kbdinteractiveauthentication no$')
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^permitrootlogin no$')
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^maxauthtries 3$')
+          - bootstrap_effective_sshd_config.stdout is search('(?m)^allowusers deploy$')
+        fail_msg: The effective SSH daemon policy is not the approved deploy-only profile.
+
+    - name: Verify deploy from a new SSH session after SSH hardening
+      ansible.builtin.include_tasks: verify-deploy-access.yml
+
+  rescue:
+    - name: Restore the previous SSH drop-in when one existed
+      ansible.builtin.copy:
+        src: "{{ bootstrap_ssh_dropin }}.bootstrap-backup"
+        dest: "{{ bootstrap_ssh_dropin }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      when: bootstrap_ssh_dropin_before.stat.exists
+
+    - name: Remove the managed SSH drop-in when it did not previously exist
+      ansible.builtin.file:
+        path: "{{ bootstrap_ssh_dropin }}"
+        state: absent
+      when: not bootstrap_ssh_dropin_before.stat.exists
+
+    - name: Reload restored SSH configuration
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+
+    - name: Stop after restoring the previous SSH configuration
+      ansible.builtin.fail:
+        msg: >-
+          SSH hardening or the new deploy session failed. The previous SSH drop-in
+          was restored and the bootstrap session remains the recovery path.
+
+- name: Remove the temporary SSH configuration backup after successful verification
+  ansible.builtin.file:
+    path: "{{ bootstrap_ssh_dropin }}.bootstrap-backup"
+    state: absent
+  when: bootstrap_ssh_dropin_before.stat.exists
+
+- name: Reset the bootstrap SSH connection after SSH lock-down
+  ansible.builtin.meta: reset_connection

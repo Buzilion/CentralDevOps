@@ -1,0 +1,232 @@
+---
+- name: Require approved Alloy version and telemetry delivery review
+  ansible.builtin.assert:
+    that:
+      - bootstrap_alloy_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - bootstrap_alloy_delivery_verified | bool
+      - bootstrap_grafana_prometheus_url is match('^https://')
+      - bootstrap_grafana_loki_url is match('^https://')
+      - bootstrap_grafana_tempo_url is string
+      - bootstrap_grafana_otlp_endpoint is match('^https://')
+      - bootstrap_grafana_prometheus_user | length > 0
+      - bootstrap_grafana_loki_user | length > 0
+      - bootstrap_grafana_tempo_user | length > 0
+      - bootstrap_grafana_instance_id | length > 0
+      - bootstrap_grafana_api_token | length > 0
+    fail_msg: Alloy requires a pinned package and approved Grafana Cloud settings.
+  no_log: true
+
+- name: Inspect Alloy configuration parent directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /etc/alloy
+    - /etc/systemd/system/alloy.service.d
+  register: bootstrap_alloy_directory_stats
+  loop_control:
+    label: "{{ item }}"
+
+- name: Refuse symbolic links in Alloy configuration directories
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Alloy managed directory {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_alloy_directory_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inspect existing Alloy managed files before replacement
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ bootstrap_alloy_config_path }}"
+    - "{{ bootstrap_alloy_environment_file }}"
+    - "{{ bootstrap_alloy_override_path }}"
+  register: bootstrap_alloy_existing_files
+
+- name: Refuse symbolic links at managed Alloy paths
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Managed Alloy path {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_alloy_existing_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read existing Alloy managed files
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ bootstrap_alloy_existing_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: bootstrap_alloy_existing_contents
+  no_log: true
+  when: item.stat.exists
+
+- name: Refuse to overwrite unmanaged Alloy configuration or service overrides
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.item.stat.exists
+        or 'Managed by CentralDevOps bootstrap.'
+        in (item.content | b64decode)
+    fail_msg: Existing Alloy artifact {{ item.item.item }} is unmanaged; review it before apply.
+  loop: "{{ bootstrap_alloy_existing_contents.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"
+  no_log: true
+  when: item.item.stat.exists
+
+- name: Inspect installed Alloy version
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dpkg-query
+      - -W
+      - -f=${Version}
+      - alloy
+  register: bootstrap_alloy_installed_version
+  failed_when: false
+  changed_when: false
+
+- name: Refuse to replace an unapproved existing Alloy version
+  ansible.builtin.assert:
+    that:
+      - bootstrap_alloy_installed_version.rc != 0 or bootstrap_alloy_installed_version.stdout == bootstrap_alloy_package_version
+    fail_msg: Existing Alloy version differs from the approved pin; review the upgrade before apply.
+
+- name: Create Grafana APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Grafana's APT signing key
+  ansible.builtin.get_url:
+    url: "{{ bootstrap_grafana_apt_key_url }}"
+    dest: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+    validate_certs: true
+
+- name: Configure Grafana's signed APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] {{ bootstrap_grafana_apt_repository }} stable main"
+    filename: grafana
+    state: present
+    update_cache: true
+    validate_certs: true
+
+- name: Install the approved Alloy package version
+  ansible.builtin.apt:
+    name: "alloy={{ bootstrap_alloy_package_version }}"
+    state: present
+    update_cache: false
+
+- name: Add Alloy to the system journal reader group
+  ansible.builtin.user:
+    name: alloy
+    groups:
+      - systemd-journal
+    append: true
+  register: bootstrap_alloy_journal_group
+
+- name: Store the Grafana Cloud API token in a root-only systemd EnvironmentFile
+  ansible.builtin.template:
+    src: grafana-cloud.env.j2
+    dest: "{{ bootstrap_alloy_environment_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: bootstrap_alloy_environment_result
+  no_log: true
+
+- name: Ensure the Alloy systemd override directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/alloy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Alloy service to load the protected token file
+  ansible.builtin.template:
+    src: alloy.override.conf.j2
+    dest: "{{ bootstrap_alloy_override_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: bootstrap_alloy_override_result
+
+- name: Stage the Alloy configuration without activating it
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: "{{ bootstrap_alloy_config_path }}.next"
+    owner: root
+    group: alloy
+    mode: "0640"
+  register: bootstrap_alloy_staged_config
+  no_log: true
+
+- name: Validate the staged Alloy configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/alloy
+      - validate
+      - "{{ bootstrap_alloy_config_path }}.next"
+  changed_when: false
+
+- name: Activate the validated Alloy configuration
+  ansible.builtin.copy:
+    src: "{{ bootstrap_alloy_config_path }}.next"
+    dest: "{{ bootstrap_alloy_config_path }}"
+    remote_src: true
+    owner: root
+    group: alloy
+    mode: "0640"
+    backup: true
+  register: bootstrap_alloy_active_config
+
+- name: Enable or restart Alloy when managed configuration changed
+  ansible.builtin.systemd:
+    name: alloy
+    daemon_reload: true
+    enabled: true
+    state: >-
+      {{
+        'restarted'
+        if bootstrap_alloy_environment_result.changed
+        or bootstrap_alloy_override_result.changed
+        or bootstrap_alloy_active_config.changed
+        or bootstrap_alloy_journal_group.changed
+        else 'started'
+      }}
+
+- name: Verify Alloy service is active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - alloy
+  register: bootstrap_alloy_final_state
+  changed_when: false
+
+- name: Require Alloy to be active
+  ansible.builtin.assert:
+    that:
+      - bootstrap_alloy_final_state.stdout == 'active'
+    fail_msg: Alloy failed to start with the validated configuration.
+
+- name: Record Alloy reconciliation result
+  ansible.builtin.set_fact:
+    bootstrap_service_status: >-
+      {{
+        bootstrap_service_status
+        | combine(
+            {
+              'alloy': 'active; metrics, journal logs, and local OTLP traces configured; delivery review attested'
+            }
+          )
+      }}

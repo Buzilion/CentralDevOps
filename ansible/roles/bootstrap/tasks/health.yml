@@ -1,0 +1,187 @@
+---
+- name: Validate the active SSH daemon configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -t
+  changed_when: false
+
+- name: Validate the deployment sudoers file
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/visudo
+      - -cf
+      - "{{ bootstrap_deploy_sudoers_file }}"
+  changed_when: false
+
+- name: Inspect deploy group membership
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -nG
+      - "{{ bootstrap_deploy_user }}"
+  register: bootstrap_deploy_groups
+  changed_when: false
+
+- name: Verify deploy has no unapproved supplementary groups
+  ansible.builtin.assert:
+    that:
+      - bootstrap_deploy_groups.stdout.split() | length == 1
+      - bootstrap_deploy_groups.stdout.split()[0] == bootstrap_deploy_user
+    fail_msg: The deploy account has unexpected supplementary groups.
+
+- name: Verify deploy password is locked
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/passwd
+      - -S
+      - "{{ bootstrap_deploy_user }}"
+  register: bootstrap_deploy_password_state
+  changed_when: false
+
+- name: Confirm deploy local password is locked
+  ansible.builtin.assert:
+    that:
+      - bootstrap_deploy_password_state.stdout is search('\\sL\\s')
+    fail_msg: The deploy local password is not locked.
+
+- name: Inspect managed deploy paths
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  register: bootstrap_deploy_path_stats
+  loop:
+    - path: "{{ bootstrap_deploy_home }}"
+      owner: "{{ bootstrap_deploy_user }}"
+      group: "{{ bootstrap_deploy_user }}"
+      modes: ["750", "0750"]
+    - path: "{{ bootstrap_deploy_ssh_directory }}"
+      owner: "{{ bootstrap_deploy_user }}"
+      group: "{{ bootstrap_deploy_user }}"
+      modes: ["700", "0700"]
+    - path: "{{ bootstrap_deploy_authorized_keys }}"
+      owner: "{{ bootstrap_deploy_user }}"
+      group: "{{ bootstrap_deploy_user }}"
+      modes: ["600", "0600"]
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Verify ownership and permissions of managed deploy paths
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.pw_name == item.item.owner
+      - item.stat.gr_name == item.item.group
+      - item.stat.mode in item.item.modes
+    fail_msg: Managed deploy ownership or permissions are incorrect for {{ item.item.path }}.
+  loop: "{{ bootstrap_deploy_path_stats.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+
+- name: Verify Fail2ban is active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - fail2ban
+  register: bootstrap_fail2ban_state
+  changed_when: false
+
+- name: Require Fail2ban SSH protection
+  ansible.builtin.assert:
+    that:
+      - bootstrap_fail2ban_state.stdout == 'active'
+    fail_msg: Fail2ban must be active after bootstrap.
+
+- name: Recheck critical systemd units after reconciliation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - --failed
+      - --no-legend
+      - --plain
+  register: bootstrap_failed_units_after
+  changed_when: false
+
+- name: Require no failed systemd units
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_failed_units_after.stdout_lines
+        | reject('match', '^\\s*0 loaded units listed\\.?\\s*$')
+        | list
+        | length == 0
+    fail_msg: Critical systemd units failed during bootstrap.
+
+- name: Recheck critical filesystem usage after reconciliation
+  ansible.builtin.assert:
+    that:
+      - item.size_total | int > 0
+      - >-
+        (
+          100 * (item.size_total | int - item.size_available | int)
+          / (item.size_total | int)
+        ) < 90
+    fail_msg: Critical filesystem {{ item.mount }} is at least 90% used after bootstrap.
+  loop: >-
+    {{
+      ansible_facts['mounts']
+      | selectattr('mount', 'in', bootstrap_critical_mounts)
+      | list
+    }}
+  loop_control:
+    label: "{{ item.mount }}"
+
+- name: Record post-bootstrap critical filesystem warnings
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Critical filesystem ' + item.mount + ' is more than 80% used.']
+      }}
+  loop: >-
+    {{
+      ansible_facts['mounts']
+      | selectattr('mount', 'in', bootstrap_critical_mounts)
+      | list
+    }}
+  loop_control:
+    label: "{{ item.mount }}"
+  when:
+    - item.size_total | int > 0
+    - >-
+      (
+        100 * (item.size_total | int - item.size_available | int)
+        / (item.size_total | int)
+      ) > 80
+    - "'Critical filesystem ' + item.mount + ' is more than 80% used.' not in bootstrap_warnings"
+
+- name: Recheck pending reboot state
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: bootstrap_pending_reboot_final_stat
+
+- name: Read final pending reboot package names
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - /var/run/reboot-required.pkgs
+  register: bootstrap_pending_reboot_final_packages
+  failed_when: false
+  changed_when: false
+  when: bootstrap_pending_reboot_final_stat.stat.exists
+
+- name: Save final pending reboot result
+  ansible.builtin.set_fact:
+    bootstrap_pending_reboot: "{{ bootstrap_pending_reboot_final_stat.stat.exists }}"
+    bootstrap_pending_reboot_packages: >-
+      {{ bootstrap_pending_reboot_final_packages.stdout_lines | default([]) }}
+
+- name: Report pending reboot status
+  ansible.builtin.debug:
+    msg: "BOOTSTRAP_PENDING_REBOOT=true"
+  when: bootstrap_pending_reboot | bool
+
+- name: Report no pending reboot
+  ansible.builtin.debug:
+    msg: "BOOTSTRAP_PENDING_REBOOT=false"
+  when: not bootstrap_pending_reboot | bool

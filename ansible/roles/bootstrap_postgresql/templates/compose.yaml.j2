@@ -1,0 +1,40 @@
+# Managed by CentralDevOps bootstrap.
+services:
+  postgres:
+    image: "{{ bootstrap_postgres_image }}"
+    container_name: "{{ bootstrap_postgresql_container_name }}"
+    user: "0:0"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: outbound_marketing
+      POSTGRES_USER: outbound_marketing
+      POSTGRES_PASSWORD_FILE: /run/secrets/outbound_marketing_db_password
+      PGDATA: "{{ bootstrap_postgresql_data_directory }}"
+    secrets:
+      - source: outbound_marketing_db_password
+        target: outbound_marketing_db_password
+    volumes:
+      - "{{ bootstrap_postgresql_volume_name }}:{{ bootstrap_postgresql_data_directory }}"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    stop_grace_period: 1m
+
+volumes:
+  "{{ bootstrap_postgresql_volume_name }}":
+    name: "{{ bootstrap_postgresql_volume_name }}"
+    external: true
+
+networks:
+  backend:
+    name: "{{ bootstrap_postgresql_network_name }}"
+    external: true
+
+secrets:
+  outbound_marketing_db_password:
+    file: "{{ bootstrap_postgresql_config_directory }}/db_password"

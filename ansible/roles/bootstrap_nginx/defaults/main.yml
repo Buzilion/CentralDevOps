@@ -1,0 +1,8 @@
+---
+bootstrap_nginx_directory: /opt/buzilion/nginx
+bootstrap_nginx_conf_directory: /opt/buzilion/nginx/conf.d
+bootstrap_nginx_letsencrypt_directory: /opt/buzilion/nginx/letsencrypt
+bootstrap_nginx_webroot_directory: /opt/buzilion/nginx/webroot
+bootstrap_nginx_compose_file: /opt/buzilion/nginx/compose.yaml
+bootstrap_nginx_container_name: buzilion-nginx
+bootstrap_acme_email: aristaaldo2@gmail.com

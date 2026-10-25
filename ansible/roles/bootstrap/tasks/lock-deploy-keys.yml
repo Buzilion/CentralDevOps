@@ -1,0 +1,12 @@
+---
+- name: Keep only the verified deploy key after the new session succeeded
+  ansible.posix.authorized_key:
+    user: "{{ bootstrap_deploy_user }}"
+    key: "{{ bootstrap_deploy_public_key | trim }}"
+    path: "{{ bootstrap_deploy_authorized_keys }}"
+    state: present
+    exclusive: true
+    manage_dir: false
+
+- name: Reverify deploy access after removing unapproved keys
+  ansible.builtin.include_tasks: verify-deploy-access.yml

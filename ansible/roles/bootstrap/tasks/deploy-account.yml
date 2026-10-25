@@ -1,0 +1,62 @@
+---
+- name: Ensure the deploy primary group exists
+  ansible.builtin.group:
+    name: "{{ bootstrap_deploy_user }}"
+    state: present
+
+- name: Create or reconcile the dedicated deploy account
+  ansible.builtin.user:
+    name: "{{ bootstrap_deploy_user }}"
+    group: "{{ bootstrap_deploy_user }}"
+    groups: ""
+    append: false
+    shell: /bin/bash
+    home: "{{ bootstrap_deploy_home }}"
+    create_home: true
+    password_lock: true
+    state: present
+
+- name: Set deploy home ownership and permissions
+  ansible.builtin.file:
+    path: "{{ bootstrap_deploy_home }}"
+    state: directory
+    owner: "{{ bootstrap_deploy_user }}"
+    group: "{{ bootstrap_deploy_user }}"
+    mode: "0750"
+
+- name: Set deploy SSH directory ownership and permissions
+  ansible.builtin.file:
+    path: "{{ bootstrap_deploy_ssh_directory }}"
+    state: directory
+    owner: "{{ bootstrap_deploy_user }}"
+    group: "{{ bootstrap_deploy_user }}"
+    mode: "0700"
+
+- name: Install only the approved deploy public key
+  ansible.posix.authorized_key:
+    user: "{{ bootstrap_deploy_user }}"
+    key: "{{ bootstrap_deploy_public_key | trim }}"
+    path: "{{ bootstrap_deploy_authorized_keys }}"
+    state: present
+    exclusive: false
+    manage_dir: false
+
+- name: Set deploy authorized_keys ownership and permissions
+  ansible.builtin.file:
+    path: "{{ bootstrap_deploy_authorized_keys }}"
+    state: file
+    owner: "{{ bootstrap_deploy_user }}"
+    group: "{{ bootstrap_deploy_user }}"
+    mode: "0600"
+
+- name: Configure passwordless sudo for the deployment workflow
+  ansible.builtin.copy:
+    dest: "{{ bootstrap_deploy_sudoers_file }}"
+    content: |
+      # Managed by CentralDevOps bootstrap.
+      {{ bootstrap_deploy_user }} ALL=(ALL:ALL) NOPASSWD:ALL
+    owner: root
+    group: root
+    mode: "0440"
+    backup: true
+    validate: /usr/sbin/visudo -cf %s

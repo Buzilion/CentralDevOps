@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule Buzilion Nginx certificate renewal
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+AccuracySec=1h
+Unit=buzilion-nginx-certbot-renew.service
+
+[Install]
+WantedBy=timers.target

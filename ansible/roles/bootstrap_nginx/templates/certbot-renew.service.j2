@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew Buzilion Nginx Let's Encrypt certificates
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/buzilion-nginx-certbot-renew
+User=root
+Group=root
+UMask=0077

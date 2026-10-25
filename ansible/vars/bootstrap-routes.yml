@@ -1,0 +1,28 @@
+---
+bootstrap_routes:
+  customer-builder-engine:
+    staging:
+      fqdn: cbe-staging.buzilion.id
+      proxy_network: cbe-proxy
+      backend_network: cbe-backend
+      upstream: customer-builder:3000
+      health_path: /api/health
+    production:
+      fqdn: cbe.buzilion.id
+      proxy_network: cbe-proxy
+      backend_network: cbe-backend
+      upstream: customer-builder:3000
+      health_path: /api/health
+  outbound-marketing:
+    staging:
+      fqdn: om-staging.buzilion.id
+      proxy_network: om-proxy
+      backend_network: om-backend
+      upstream: outbound-marketing:3100
+      health_path: /api/health
+    production:
+      fqdn: om.buzilion.id
+      proxy_network: om-proxy
+      backend_network: om-backend
+      upstream: outbound-marketing:3100
+      health_path: /api/health

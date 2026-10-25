@@ -1,0 +1,23 @@
+---
+bootstrap_deploy_user: deploy
+bootstrap_base_packages:
+  - ca-certificates
+  - curl
+  - fail2ban
+  - gnupg
+  - unattended-upgrades
+  - ufw
+bootstrap_critical_mounts:
+  - /
+  - /var
+  - /opt
+  - /var/lib/docker
+  - /var/lib/buzilion
+bootstrap_deploy_home: /home/deploy
+bootstrap_deploy_ssh_directory: /home/deploy/.ssh
+bootstrap_deploy_authorized_keys: /home/deploy/.ssh/authorized_keys
+bootstrap_deploy_sudoers_file: /etc/sudoers.d/90-deploy
+bootstrap_ssh_dropin: /etc/ssh/sshd_config.d/00-buzilion-hardening.conf
+bootstrap_fail2ban_jail: /etc/fail2ban/jail.d/sshd.local
+bootstrap_allowed_base_ports:
+  - 22

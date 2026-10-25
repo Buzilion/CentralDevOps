@@ -1,0 +1,30 @@
+---
+- name: Write a non-secret bootstrap result for the GitHub job summary
+  ansible.builtin.copy:
+    dest: "{{ bootstrap_report_path }}"
+    content: >-
+      {{
+        {
+          'status': 'passed',
+          'mode': bootstrap_mode,
+          'inventory': bootstrap_inventory,
+          'target_host': inventory_hostname,
+          'environment': bootstrap_environment,
+          'host_id': bootstrap_host_id,
+          'requested_services': bootstrap_requested_services,
+          'effective_services': bootstrap_effective_services,
+          'services': bootstrap_service_status,
+          'pending_reboot': bootstrap_pending_reboot | bool,
+          'pending_reboot_packages': bootstrap_pending_reboot_packages | default([]),
+          'warnings': bootstrap_warnings,
+          'manual_recovery_action': (
+            'A reboot is pending; the host was not rebooted. Any reboot requires a separate approved manual process.'
+            if bootstrap_pending_reboot | bool
+            else 'None reported.'
+          ),
+          'provider_firewall': 'manual; not verified by GitHub Actions'
+        } | to_nice_json
+      }}
+    mode: "0600"
+  delegate_to: localhost
+  become: false

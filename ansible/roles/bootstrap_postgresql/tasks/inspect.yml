@@ -1,0 +1,226 @@
+---
+- name: Inspect the selected PostgreSQL container
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_container
+  failed_when: false
+  changed_when: false
+
+- name: Inspect the existing PostgreSQL container health
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.State.Health.Status{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_health
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require an existing selected PostgreSQL service to be healthy
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_existing_health.stdout == 'healthy'
+    fail_msg: The selected PostgreSQL container is not healthy.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect existing PostgreSQL image pin
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.Config.Image{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_image
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require the approved PostgreSQL image for validation
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_existing_image.stdout == bootstrap_postgres_image
+    fail_msg: Existing PostgreSQL image differs from the approved immutable image.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect the current root-only PostgreSQL password file
+  ansible.builtin.stat:
+    path: "{{ bootstrap_postgresql_config_directory }}/db_password"
+  register: bootstrap_postgresql_password_file
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Read the existing PostgreSQL password file for safe drift detection
+  ansible.builtin.slurp:
+    src: "{{ bootstrap_postgresql_config_directory }}/db_password"
+  register: bootstrap_postgresql_password_content
+  no_log: true
+  when:
+    - bootstrap_postgresql_existing_container.rc == 0
+    - bootstrap_postgresql_password_file.stat.exists
+
+- name: Refuse an unverified PostgreSQL password change
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_password_file.stat.exists
+      - >-
+        (bootstrap_postgresql_password_content.content | b64decode | trim)
+        == bootstrap_postgresql_db_password
+    fail_msg: Existing PostgreSQL password configuration differs from the protected Environment secret.
+  no_log: true
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Verify the existing database accepts its managed password without changing data
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - exec
+      - --user
+      - root
+      - "{{ bootstrap_postgresql_container_name }}"
+      - sh
+      - -c
+      - >-
+        PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)"
+        psql -h 127.0.0.1 -w -U outbound_marketing
+        -d outbound_marketing -tAc "SELECT 1"
+  register: bootstrap_postgresql_auth_test
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require existing PostgreSQL credentials to work
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_auth_test.rc == 0
+      - bootstrap_postgresql_auth_test.stdout | trim == '1'
+    fail_msg: Existing PostgreSQL credentials do not pass a read-only connection test.
+  no_log: true
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect existing PostgreSQL public port bindings
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}json .HostConfig.PortBindings{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_port_bindings
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require PostgreSQL to have no published host ports
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_existing_port_bindings.stdout in ['<nil>', '{}', 'null']
+    fail_msg: Existing PostgreSQL publishes a host port.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect existing PostgreSQL persistent mount
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}range .Mounts{{ '}}' }}{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Destination{{ '}}' }} {{ '{{' }}end{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_mounts
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require the approved persistent PostgreSQL volume
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_postgresql_existing_mounts.stdout
+        is search(bootstrap_postgresql_volume_name + ':' + bootstrap_postgresql_data_directory)
+    fail_msg: Existing PostgreSQL does not use the approved persistent volume and image-specific data directory.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect initial isolated restore proof
+  ansible.builtin.stat:
+    path: "{{ bootstrap_postgresql_state_directory }}/initial-restore-verified"
+  register: bootstrap_postgresql_restore_proof
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require the initial isolated PostgreSQL restore proof
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_restore_proof.stat.exists
+    fail_msg: The existing PostgreSQL service has no recorded isolated restore proof.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect scheduled PostgreSQL backup timer
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - buzilion-outbound-postgresql-backup.timer
+  register: bootstrap_postgresql_backup_timer_state
+  failed_when: false
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require the PostgreSQL backup timer to be active
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_backup_timer_state.stdout == 'active'
+    fail_msg: The PostgreSQL off-host backup timer is not active.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Inspect last successful PostgreSQL backup timestamp
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - "{{ bootstrap_postgresql_state_directory }}/last-backup-success"
+  register: bootstrap_postgresql_last_backup
+  failed_when: false
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Read current UTC epoch for backup freshness check
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/date
+      - -u
+      - +%s
+  register: bootstrap_postgresql_now
+  changed_when: false
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Parse the recorded backup timestamp and S3 object key
+  ansible.builtin.set_fact:
+    bootstrap_postgresql_last_backup_parts: "{{ bootstrap_postgresql_last_backup.stdout.split() }}"
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Require a recent backup for an existing selected PostgreSQL service
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_last_backup.rc == 0
+      - >-
+        (bootstrap_postgresql_now.stdout | int)
+        - (bootstrap_postgresql_last_backup_parts | first | default('0') | int) <= 43200
+      - bootstrap_postgresql_last_backup_parts | length == 2
+    fail_msg: PostgreSQL is selected but its latest successful off-host backup is missing or older than 12 hours.
+  when: bootstrap_postgresql_existing_container.rc == 0
+
+- name: Report PostgreSQL recovery status
+  ansible.builtin.set_fact:
+    bootstrap_service_status: >-
+      {{
+        bootstrap_service_status
+        | combine(
+            {
+              'postgresql': (
+                'present; recent off-host backup recorded'
+                if bootstrap_postgresql_existing_container.rc == 0
+                else 'absent; apply would install persistent PostgreSQL'
+              )
+            }
+          )
+      }}

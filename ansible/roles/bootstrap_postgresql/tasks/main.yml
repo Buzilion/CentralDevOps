@@ -1,0 +1,400 @@
+---
+- name: Require verified PostgreSQL recovery prerequisites and exact image
+  ansible.builtin.assert:
+    that:
+      - bootstrap_application == 'outbound-marketing'
+      - bootstrap_postgres_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_aws_cli_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_postgresql_data_directory is match('^/[A-Za-z0-9._/-]+$')
+      - "'..' not in bootstrap_postgresql_data_directory.split('/')"
+      - bootstrap_postgres_backup_policy_verified | bool
+      - bootstrap_postgresql_db_password | length > 0
+      - bootstrap_s3_access_key_id | length > 0
+      - bootstrap_s3_secret_access_key | length > 0
+      - bootstrap_s3_restore_access_key_id | length > 0
+      - bootstrap_s3_restore_secret_access_key | length > 0
+    fail_msg: PostgreSQL requires an approved image and verified off-host recovery configuration.
+  no_log: true
+
+- name: Inspect existing PostgreSQL Compose definition
+  ansible.builtin.stat:
+    path: "{{ bootstrap_postgresql_compose_file }}"
+  register: bootstrap_postgresql_compose_stat
+
+- name: Refuse a symbolic-link PostgreSQL Compose definition
+  ansible.builtin.assert:
+    that:
+      - not (bootstrap_postgresql_compose_stat.stat.islnk | default(false))
+    fail_msg: PostgreSQL Compose path is a symbolic link; review it before apply.
+
+- name: Read existing PostgreSQL Compose definition
+  ansible.builtin.slurp:
+    src: "{{ bootstrap_postgresql_compose_file }}"
+  register: bootstrap_postgresql_compose_content
+  when: bootstrap_postgresql_compose_stat.stat.exists
+
+- name: Refuse to overwrite an unmanaged PostgreSQL Compose definition
+  ansible.builtin.assert:
+    that:
+      - "'Managed by CentralDevOps bootstrap.' in (bootstrap_postgresql_compose_content.content | b64decode)"
+    fail_msg: Existing PostgreSQL Compose configuration is unmanaged; review it before apply.
+  when: bootstrap_postgresql_compose_stat.stat.exists
+
+- name: Inspect existing PostgreSQL backup program and units before replacement
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/local/sbin/buzilion-outbound-postgresql-backup
+    - /etc/systemd/system/buzilion-outbound-postgresql-backup.service
+    - /etc/systemd/system/buzilion-outbound-postgresql-backup.timer
+  register: bootstrap_postgresql_backup_files_before
+
+- name: Refuse symbolic links at managed backup paths
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Managed PostgreSQL backup path {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_postgresql_backup_files_before.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read existing PostgreSQL backup artifacts
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ bootstrap_postgresql_backup_files_before.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: bootstrap_postgresql_backup_contents
+  when: item.stat.exists
+
+- name: Refuse to replace unmanaged PostgreSQL backup artifacts
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.item.stat.exists
+        or 'Managed by CentralDevOps bootstrap.'
+        in (item.content | b64decode)
+    fail_msg: Existing PostgreSQL backup artifact {{ item.item.item }} is unmanaged.
+  loop: "{{ bootstrap_postgresql_backup_contents.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"
+  when: item.item.stat.exists
+
+- name: Inspect existing PostgreSQL data and secret paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ bootstrap_postgresql_directory }}"
+    - "{{ bootstrap_postgresql_config_directory }}"
+    - "{{ bootstrap_postgresql_state_directory }}"
+    - "{{ bootstrap_postgresql_config_directory }}/db_password"
+    - "{{ bootstrap_postgresql_config_directory }}/s3-writer.env"
+    - "{{ bootstrap_postgresql_config_directory }}/s3-restore.env"
+  register: bootstrap_postgresql_path_stats
+  loop_control:
+    label: "{{ item }}"
+
+- name: Refuse symbolic links in PostgreSQL data and secret paths
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: PostgreSQL managed path {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_postgresql_path_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inspect existing PostgreSQL container before reconciliation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.Config.Image{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_existing_image
+  failed_when: false
+  changed_when: false
+
+- name: Refuse to replace an existing PostgreSQL container with a different image
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_existing_image.rc != 0 or bootstrap_postgresql_existing_image.stdout == bootstrap_postgres_image
+    fail_msg: An existing PostgreSQL container uses a different image; review the migration before apply.
+
+- name: Inspect existing PostgreSQL container port bindings
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}json .HostConfig.PortBindings{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_port_bindings
+  failed_when: false
+  changed_when: false
+  when: bootstrap_postgresql_existing_image.rc == 0
+
+- name: Refuse a PostgreSQL container with host-published ports
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_port_bindings.stdout in ['<nil>', '{}', 'null']
+    fail_msg: Existing PostgreSQL publishes a host port; remove the exposure through an approved migration.
+  when: bootstrap_postgresql_existing_image.rc == 0
+
+- name: Inspect existing PostgreSQL data volume mapping
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}range .Mounts{{ '}}' }}{{ '{{' }}.Name{{ '}}' }}:{{ '{{' }}.Destination{{ '}}' }} {{ '{{' }}end{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_mounts
+  failed_when: false
+  changed_when: false
+  when: bootstrap_postgresql_existing_image.rc == 0
+
+- name: Refuse to replace PostgreSQL without its approved persistent data volume
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_postgresql_mounts.stdout
+        is search(bootstrap_postgresql_volume_name + ':' + bootstrap_postgresql_data_directory)
+    fail_msg: Existing PostgreSQL does not use the approved persistent volume and data directory.
+  when: bootstrap_postgresql_existing_image.rc == 0
+
+- name: Ensure the PostgreSQL service network exists
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - inspect
+      - --format
+      - "{{ '{{' }}.Driver{{ '}}' }} {{ '{{' }}.Scope{{ '}}' }} {{ '{{' }}.Internal{{ '}}' }}"
+      - "{{ bootstrap_postgresql_network_name }}"
+  register: bootstrap_postgresql_network
+  failed_when: false
+  changed_when: false
+
+- name: Create the PostgreSQL backend network when absent
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - create
+      - --driver
+      - bridge
+      - "{{ bootstrap_postgresql_network_name }}"
+  changed_when: true
+  when: bootstrap_postgresql_network.rc != 0
+
+- name: Verify the PostgreSQL network after creation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - inspect
+      - --format
+      - "{{ '{{' }}.Driver{{ '}}' }} {{ '{{' }}.Scope{{ '}}' }} {{ '{{' }}.Internal{{ '}}' }}"
+      - "{{ bootstrap_postgresql_network_name }}"
+  register: bootstrap_postgresql_network_after_create
+  changed_when: false
+  when: bootstrap_postgresql_network.rc != 0
+
+- name: Require the created PostgreSQL network to be a local bridge
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_network_after_create.stdout == 'bridge local false'
+    fail_msg: The created PostgreSQL network does not match the approved profile.
+  when: bootstrap_postgresql_network.rc != 0
+
+- name: Verify an existing PostgreSQL backend network
+  ansible.builtin.assert:
+    that:
+      - bootstrap_postgresql_network.stdout == 'bridge local false'
+    fail_msg: The existing PostgreSQL network does not match the approved local bridge profile.
+  when: bootstrap_postgresql_network.rc == 0
+
+- name: Inspect the persistent PostgreSQL named volume
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - volume
+      - inspect
+      - "{{ bootstrap_postgresql_volume_name }}"
+  register: bootstrap_postgresql_volume_inspection
+  failed_when: false
+  changed_when: false
+
+- name: Create the persistent PostgreSQL named volume when absent
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - volume
+      - create
+      - "{{ bootstrap_postgresql_volume_name }}"
+  register: bootstrap_postgresql_volume
+  changed_when: true
+  when: bootstrap_postgresql_volume_inspection.rc != 0
+
+- name: Create root-owned PostgreSQL configuration and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ bootstrap_postgresql_directory }}"
+      mode: "0750"
+    - path: "{{ bootstrap_postgresql_config_directory }}"
+      mode: "0700"
+    - path: "{{ bootstrap_postgresql_state_directory }}"
+      mode: "0700"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Store the PostgreSQL password in a root-only file
+  ansible.builtin.copy:
+    dest: "{{ bootstrap_postgresql_config_directory }}/db_password"
+    content: "{{ bootstrap_postgresql_db_password }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Store the scoped backup-writer credentials
+  ansible.builtin.template:
+    src: s3-writer.env.j2
+    dest: "{{ bootstrap_postgresql_config_directory }}/s3-writer.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Store the separate restore credentials
+  ansible.builtin.template:
+    src: s3-restore.env.j2
+    dest: "{{ bootstrap_postgresql_config_directory }}/s3-restore.env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the PostgreSQL Compose definition
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ bootstrap_postgresql_compose_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/docker compose -f %s config --quiet
+
+- name: Reconcile the persistent PostgreSQL container
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - --project-name
+      - buzilion-outbound-postgresql
+      - --file
+      - "{{ bootstrap_postgresql_compose_file }}"
+      - up
+      - --detach
+  register: bootstrap_postgresql_compose_result
+  changed_when: bootstrap_postgresql_compose_result.stdout is search('(?m)^Container .+ (Created|Recreated|Started)$')
+
+- name: Wait for PostgreSQL health
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.State.Health.Status{{ '}}' }}"
+      - "{{ bootstrap_postgresql_container_name }}"
+  register: bootstrap_postgresql_health
+  changed_when: false
+  retries: 18
+  delay: 10
+  until: bootstrap_postgresql_health.stdout == 'healthy'
+
+- name: Install the root-owned off-host backup script
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: /usr/local/sbin/buzilion-outbound-postgresql-backup
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install PostgreSQL backup service unit
+  ansible.builtin.template:
+    src: backup.service.j2
+    dest: /etc/systemd/system/buzilion-outbound-postgresql-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/systemd-analyze verify %s
+
+- name: Install PostgreSQL backup timer unit
+  ansible.builtin.template:
+    src: backup.timer.j2
+    dest: /etc/systemd/system/buzilion-outbound-postgresql-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/systemd-analyze verify %s
+
+- name: Check whether the initial isolated restore proof already exists
+  ansible.builtin.stat:
+    path: "{{ bootstrap_postgresql_state_directory }}/initial-restore-verified"
+  register: bootstrap_postgresql_initial_restore
+
+- name: Upload and restore an initial backup into an isolated test database
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/buzilion-outbound-postgresql-backup
+      - --initial-restore-test
+  register: bootstrap_postgresql_initial_backup_result
+  changed_when: true
+  no_log: true
+  when: not bootstrap_postgresql_initial_restore.stat.exists
+
+- name: Enable the scheduled off-host backup
+  ansible.builtin.systemd:
+    name: buzilion-outbound-postgresql-backup.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Verify a recent successful off-host backup
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - "{{ bootstrap_postgresql_state_directory }}/last-backup-success"
+  register: bootstrap_postgresql_last_backup_after_apply
+  changed_when: false
+
+- name: Require PostgreSQL backup within the RPO window
+  ansible.builtin.assert:
+    that:
+      - >-
+        (ansible_date_time.epoch | int)
+        - (bootstrap_postgresql_last_backup_after_apply.stdout.split() | first | default('0') | int)
+        <= 43200
+      - bootstrap_postgresql_last_backup_after_apply.stdout.split() | length == 2
+    fail_msg: PostgreSQL's last successful backup is older than the 12-hour RPO.
+
+- name: Record PostgreSQL recovery status
+  ansible.builtin.set_fact:
+    bootstrap_service_status: >-
+      {{
+        bootstrap_service_status
+        | combine(
+            {
+              'postgresql': 'healthy; persistent volume, scheduled off-host backup, and isolated restore verified'
+            }
+          )
+      }}

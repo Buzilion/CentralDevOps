@@ -1,0 +1,42 @@
+---
+- name: Test a new deploy SSH session and required sudo access
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/ssh
+      - -F
+      - /dev/null
+      - -i
+      - "{{ bootstrap_deploy_private_key_file }}"
+      - -o
+      - BatchMode=yes
+      - -o
+      - IdentitiesOnly=yes
+      - -o
+      - StrictHostKeyChecking=yes
+      - -o
+      - "UserKnownHostsFile={{ bootstrap_known_hosts_file }}"
+      - -o
+      - PasswordAuthentication=no
+      - -o
+      - KbdInteractiveAuthentication=no
+      - -o
+      - PreferredAuthentications=publickey
+      - -o
+      - ConnectTimeout=15
+      - "{{ bootstrap_deploy_user }}@{{ hostvars[inventory_hostname]['ansible_host'] }}"
+      - sudo
+      - -n
+      - true
+  delegate_to: localhost
+  register: bootstrap_deploy_ssh_test
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Require working deploy key-based SSH and sudo
+  ansible.builtin.assert:
+    that:
+      - bootstrap_deploy_ssh_test.rc == 0
+    fail_msg: >-
+      The deploy key could not establish a new SSH session with required sudo access.
+      The bootstrap SSH allowlist has not been changed.

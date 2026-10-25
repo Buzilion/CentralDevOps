@@ -1,0 +1,7 @@
+---
+bootstrap_grafana_apt_key_url: https://apt.grafana.com/gpg.key
+bootstrap_grafana_apt_repository: https://apt.grafana.com
+bootstrap_alloy_config_path: /etc/alloy/config.alloy
+bootstrap_alloy_environment_file: /etc/alloy/grafana-cloud.env
+bootstrap_alloy_override_path: /etc/systemd/system/alloy.service.d/99-buzilion-grafana-cloud.conf
+bootstrap_alloy_instance_label: "{{ bootstrap_host_id }}"

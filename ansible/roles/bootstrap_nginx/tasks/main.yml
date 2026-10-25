@@ -1,0 +1,561 @@
+---
+- name: Require Docker and an approved immutable Nginx image
+  ansible.builtin.assert:
+    that:
+      - "'docker' in bootstrap_effective_services"
+      - bootstrap_nginx_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_certbot_image is match('^.+@sha256:[0-9a-f]{64}$')
+      - bootstrap_route.fqdn == bootstrap_route_fqdn
+      - bootstrap_route.upstream is match('^[A-Za-z0-9_.-]+:[0-9]+$')
+      - bootstrap_route.proxy_network is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+    fail_msg: Nginx needs Docker, approved immutable images, and an explicit route.
+
+- name: Inspect an existing Nginx container image
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.Config.Image{{ '}}' }}"
+      - "{{ bootstrap_nginx_container_name }}"
+  register: bootstrap_nginx_existing_image
+  failed_when: false
+  changed_when: false
+
+- name: Refuse to replace an existing Nginx container with a different image
+  ansible.builtin.assert:
+    that:
+      - bootstrap_nginx_existing_image.rc != 0 or bootstrap_nginx_existing_image.stdout == bootstrap_nginx_image
+    fail_msg: Existing Nginx uses a different image; review the migration before apply.
+
+- name: Inspect existing Nginx directory paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ bootstrap_nginx_directory }}"
+    - "{{ bootstrap_nginx_conf_directory }}"
+    - "{{ bootstrap_nginx_letsencrypt_directory }}"
+    - "{{ bootstrap_nginx_webroot_directory }}"
+  register: bootstrap_nginx_directory_stats
+  loop_control:
+    label: "{{ item }}"
+
+- name: Refuse symbolic links in the Nginx configuration tree
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Nginx managed directory {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_nginx_directory_stats.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inspect existing Nginx files before creating networks or directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ bootstrap_nginx_directory }}/nginx.conf"
+    - "{{ bootstrap_nginx_compose_file }}"
+    - "{{ bootstrap_nginx_conf_directory }}/site.conf"
+  register: bootstrap_nginx_preflight_files
+
+- name: Refuse symbolic links at existing Nginx file paths
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Managed Nginx path {{ item.item }} is a symbolic link.
+  loop: "{{ bootstrap_nginx_preflight_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read existing Nginx files before any service mutation
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ bootstrap_nginx_preflight_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: bootstrap_nginx_preflight_contents
+  when: item.stat.exists
+
+- name: Refuse to overwrite unmanaged Nginx files before any service mutation
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.item.stat.exists
+        or 'Managed by CentralDevOps bootstrap.'
+        in (item.content | b64decode)
+    fail_msg: Existing Nginx file {{ item.item.item }} is unmanaged; review it before apply.
+  loop: "{{ bootstrap_nginx_preflight_contents.results }}"
+  loop_control:
+    label: "{{ item.item.item }}"
+  when: item.item.stat.exists
+
+- name: Inspect existing Nginx server block files
+  ansible.builtin.find:
+    paths: "{{ bootstrap_nginx_conf_directory }}"
+    patterns: "*.conf"
+    file_type: any
+    recurse: false
+    follow: false
+  register: bootstrap_nginx_server_block_files
+  when: bootstrap_nginx_directory_stats.results[1].stat.isdir | default(false)
+
+- name: Refuse unmanaged Nginx server block files
+  ansible.builtin.assert:
+    that:
+      - item.path == bootstrap_nginx_conf_directory + '/site.conf'
+      - not (item.islnk | default(false))
+    fail_msg: >-
+      Existing Nginx server block {{ item.path }} is outside the managed route.
+      Review it before apply.
+  loop: "{{ bootstrap_nginx_server_block_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Inspect the approved shared proxy network
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - inspect
+      - --format
+      - "{{ '{{' }}.Driver{{ '}}' }} {{ '{{' }}.Scope{{ '}}' }} {{ '{{' }}.Internal{{ '}}' }}"
+      - "{{ bootstrap_route.proxy_network }}"
+  register: bootstrap_nginx_proxy_network
+  failed_when: false
+  changed_when: false
+
+- name: Create the approved proxy network when absent
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - create
+      - --driver
+      - bridge
+      - "{{ bootstrap_route.proxy_network }}"
+  register: bootstrap_nginx_proxy_network_created
+  changed_when: true
+  when: bootstrap_nginx_proxy_network.rc != 0
+
+- name: Verify the proxy network after creation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - network
+      - inspect
+      - --format
+      - "{{ '{{' }}.Driver{{ '}}' }} {{ '{{' }}.Scope{{ '}}' }} {{ '{{' }}.Internal{{ '}}' }}"
+      - "{{ bootstrap_route.proxy_network }}"
+  register: bootstrap_nginx_proxy_network_after_create
+  changed_when: false
+  when: bootstrap_nginx_proxy_network.rc != 0
+
+- name: Require a local bridge proxy network after creation
+  ansible.builtin.assert:
+    that:
+      - bootstrap_nginx_proxy_network_after_create.stdout == 'bridge local false'
+    fail_msg: The created Nginx proxy network does not match the approved profile.
+  when: bootstrap_nginx_proxy_network.rc != 0
+
+- name: Verify the existing proxy network is local and non-internal
+  ansible.builtin.assert:
+    that:
+      - bootstrap_nginx_proxy_network.stdout == 'bridge local false'
+    fail_msg: >-
+      Existing Docker network {{ bootstrap_route.proxy_network }} does not match
+      the approved local bridge network.
+  when: bootstrap_nginx_proxy_network.rc == 0
+
+- name: Create the root-owned Nginx configuration tree
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ bootstrap_nginx_directory }}"
+      mode: "0750"
+    - path: "{{ bootstrap_nginx_conf_directory }}"
+      mode: "0750"
+    - path: "{{ bootstrap_nginx_letsencrypt_directory }}"
+      mode: "0700"
+    - path: "{{ bootstrap_nginx_webroot_directory }}"
+      mode: "0750"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the managed Nginx main configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ bootstrap_nginx_directory }}/nginx.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_nginx_main_config_result
+
+- name: Install the managed Nginx Compose definition
+  ansible.builtin.template:
+    src: compose.yaml.j2
+    dest: "{{ bootstrap_nginx_compose_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/docker compose -f %s config --quiet
+  register: bootstrap_nginx_compose_config_result
+
+- name: Check for an existing Let's Encrypt certificate
+  ansible.builtin.stat:
+    path: "{{ bootstrap_nginx_letsencrypt_directory }}/live/{{ bootstrap_route.fqdn }}/fullchain.pem"
+  register: bootstrap_nginx_certificate
+
+- name: Stage temporary HTTP configuration for ACME issuance
+  ansible.builtin.template:
+    src: site-acme.conf.j2
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Stage final HTTP and HTTPS route configuration
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    owner: root
+    group: root
+    mode: "0644"
+  when: bootstrap_nginx_certificate.stat.exists
+
+- name: Validate the staged ACME Nginx configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - run
+      - --rm
+      - --network
+      - "{{ bootstrap_route.proxy_network }}"
+      - -v
+      - "{{ bootstrap_nginx_directory }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_conf_directory }}/site.conf.next:/etc/nginx/conf.d/site.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt:ro"
+      - -v
+      - "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot:ro"
+      - "{{ bootstrap_nginx_image }}"
+      - nginx
+      - -t
+  changed_when: false
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Validate the staged TLS Nginx configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - run
+      - --rm
+      - --network
+      - "{{ bootstrap_route.proxy_network }}"
+      - -v
+      - "{{ bootstrap_nginx_directory }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_conf_directory }}/site.conf.next:/etc/nginx/conf.d/site.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt:ro"
+      - -v
+      - "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot:ro"
+      - "{{ bootstrap_nginx_image }}"
+      - nginx
+      - -t
+  changed_when: false
+  when: bootstrap_nginx_certificate.stat.exists
+
+- name: Activate the validated ACME configuration
+  ansible.builtin.copy:
+    src: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_nginx_acme_activation
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Activate the validated TLS configuration
+  ansible.builtin.copy:
+    src: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_nginx_tls_activation
+  when: bootstrap_nginx_certificate.stat.exists
+
+- name: Start Nginx with the ACME challenge route
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - --project-name
+      - buzilion-nginx
+      - --file
+      - "{{ bootstrap_nginx_compose_file }}"
+      - up
+      - --detach
+  register: bootstrap_nginx_acme_compose
+  changed_when: bootstrap_nginx_acme_compose.stdout is search('(?m)^Container .+ (Created|Recreated|Started)$')
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Request or retain the existing Let's Encrypt certificate
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - run
+      - --rm
+      - -v
+      - "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt"
+      - -v
+      - "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot"
+      - "{{ bootstrap_certbot_image }}"
+      - certonly
+      - --webroot
+      - --webroot-path
+      - /var/www/certbot
+      - --email
+      - "{{ bootstrap_acme_email }}"
+      - --agree-tos
+      - --non-interactive
+      - --keep-until-expiring
+      - --domain
+      - "{{ bootstrap_route.fqdn }}"
+  register: bootstrap_certbot_result
+  changed_when: true
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Require the ACME certificate to be present
+  ansible.builtin.stat:
+    path: "{{ bootstrap_nginx_letsencrypt_directory }}/live/{{ bootstrap_route.fqdn }}/fullchain.pem"
+  register: bootstrap_nginx_certificate_after_acme
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Stop if certificate issuance did not produce the expected certificate
+  ansible.builtin.assert:
+    that:
+      - bootstrap_nginx_certificate_after_acme.stat.exists
+    fail_msg: Let's Encrypt did not produce a certificate for the approved route.
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Stage final TLS configuration after ACME issuance
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Validate final TLS configuration after ACME issuance
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - run
+      - --rm
+      - --network
+      - "{{ bootstrap_route.proxy_network }}"
+      - -v
+      - "{{ bootstrap_nginx_directory }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_conf_directory }}/site.conf.next:/etc/nginx/conf.d/site.conf:ro"
+      - -v
+      - "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt:ro"
+      - -v
+      - "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot:ro"
+      - "{{ bootstrap_nginx_image }}"
+      - nginx
+      - -t
+  changed_when: false
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Activate final TLS configuration after ACME issuance
+  ansible.builtin.copy:
+    src: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    dest: "{{ bootstrap_nginx_conf_directory }}/site.conf"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_nginx_final_tls_activation
+  when: not bootstrap_nginx_certificate.stat.exists
+
+- name: Start or reconcile the Nginx service
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - --project-name
+      - buzilion-nginx
+      - --file
+      - "{{ bootstrap_nginx_compose_file }}"
+      - up
+      - --detach
+  register: bootstrap_nginx_compose_result
+  changed_when: bootstrap_nginx_compose_result.stdout is search('(?m)^Container .+ (Created|Recreated|Started)$')
+
+- name: Determine whether managed Nginx configuration changed
+  ansible.builtin.set_fact:
+    bootstrap_nginx_config_changed: >-
+      {{
+        bootstrap_nginx_main_config_result.changed
+        or bootstrap_nginx_compose_config_result.changed
+        or (bootstrap_nginx_acme_activation.changed | default(false))
+        or (bootstrap_nginx_tls_activation.changed | default(false))
+        or (bootstrap_nginx_final_tls_activation.changed | default(false))
+      }}
+
+- name: Validate the active Nginx configuration inside the service container
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - exec
+      - "{{ bootstrap_nginx_container_name }}"
+      - nginx
+      - -t
+  changed_when: false
+
+- name: Reload Nginx to activate the validated route configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - exec
+      - "{{ bootstrap_nginx_container_name }}"
+      - nginx
+      - -s
+      - reload
+  changed_when: bootstrap_nginx_config_changed | bool
+  when: bootstrap_nginx_config_changed | bool
+
+- name: Wait for Nginx container health
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - inspect
+      - --format
+      - "{{ '{{' }}.State.Health.Status{{ '}}' }}"
+      - "{{ bootstrap_nginx_container_name }}"
+  register: bootstrap_nginx_health
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: bootstrap_nginx_health.stdout == 'healthy'
+
+- name: Verify HTTP redirects to HTTPS
+  ansible.builtin.uri:
+    url: "http://{{ bootstrap_route.fqdn }}/"
+    method: GET
+    follow_redirects: none
+    status_code: 301
+  delegate_to: localhost
+  become: false
+
+- name: Verify HTTPS is available with a valid certificate
+  ansible.builtin.uri:
+    url: "https://{{ bootstrap_route.fqdn }}/"
+    method: GET
+    follow_redirects: none
+    status_code:
+      - 200
+      - 502
+  delegate_to: localhost
+  become: false
+
+- name: Check whether the selected application is connected to the proxy network
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - ps
+      - --filter
+      - "network={{ bootstrap_route.proxy_network }}"
+      - --filter
+      - "label=com.docker.compose.service={{ bootstrap_route.upstream.split(':')[0] }}"
+      - --format
+      - "{{ '{{' }}.Names{{ '}}' }}"
+  register: bootstrap_nginx_application_containers
+  changed_when: false
+
+- name: Verify the HTTPS application health endpoint when the app is deployed
+  ansible.builtin.uri:
+    url: "https://{{ bootstrap_route.fqdn }}{{ bootstrap_route.health_path }}"
+    method: GET
+    follow_redirects: none
+    status_code: 200
+  delegate_to: localhost
+  become: false
+  when: bootstrap_nginx_application_containers.stdout | trim | length > 0
+
+- name: Install the root-owned certificate renewal script
+  ansible.builtin.template:
+    src: certbot-renew.sh.j2
+    dest: /usr/local/sbin/buzilion-nginx-certbot-renew
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install the certificate renewal service unit
+  ansible.builtin.template:
+    src: certbot-renew.service.j2
+    dest: /etc/systemd/system/buzilion-nginx-certbot-renew.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the certificate renewal timer unit
+  ansible.builtin.template:
+    src: certbot-renew.timer.j2
+    dest: /etc/systemd/system/buzilion-nginx-certbot-renew.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable the daily certificate renewal timer
+  ansible.builtin.systemd:
+    name: buzilion-nginx-certbot-renew.timer
+    daemon_reload: true
+    enabled: true
+    state: started
+
+- name: Remove the temporary staged Nginx configuration
+  ansible.builtin.file:
+    path: "{{ bootstrap_nginx_conf_directory }}/site.conf.next"
+    state: absent
+
+- name: Record Nginx route health
+  ansible.builtin.set_fact:
+    bootstrap_service_status: >-
+      {{
+        bootstrap_service_status
+        | combine(
+            {
+              'nginx': (
+                'healthy; HTTPS route and application health endpoint passed'
+                if bootstrap_nginx_application_containers.stdout | trim | length > 0
+                else 'pending; Nginx and TLS are healthy, but the application is not deployed'
+              )
+            }
+          )
+      }}
+
+- name: Report an application route that is pending deployment
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Nginx route is pending because its application container is not deployed.']
+      }}
+  when: bootstrap_nginx_application_containers.stdout | trim | length == 0

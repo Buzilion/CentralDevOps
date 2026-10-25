@@ -1,0 +1,86 @@
+---
+- name: Require the manual provider firewall approval before host firewall changes
+  ansible.builtin.assert:
+    that:
+      - bootstrap_provider_firewall_reviewed | bool
+      - bootstrap_sumopod_ssh_source_restricted | bool or bootstrap_public_ssh_exception_approved | bool
+    fail_msg: Apply requires verified Sumopod firewall rules and an approved SSH source policy.
+
+- name: Ensure the management SSH path is allowed before enabling UFW
+  ansible.posix.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: Allow HTTP and HTTPS only for selected Nginx
+  ansible.posix.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  when: "'nginx' in bootstrap_effective_services"
+
+- name: Inspect whether the host has a configured IPv6 default route
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/ip
+      - -6
+      - route
+      - show
+      - default
+  register: bootstrap_ipv6_default_route
+  failed_when: false
+  changed_when: false
+
+- name: Enable IPv6 processing in UFW when the host has IPv6 configured
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: "^IPV6="
+    line: IPV6=yes
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  register: bootstrap_ufw_ipv6_config
+  when: bootstrap_ipv6_default_route.stdout | trim | length > 0
+
+- name: Set default inbound host firewall policy to deny
+  ansible.posix.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set default outbound host firewall policy to allow
+  ansible.posix.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: Enable the host firewall without removing existing rules
+  ansible.posix.ufw:
+    state: enabled
+
+- name: Reload UFW only when its IPv6 configuration changed
+  ansible.posix.ufw:
+    state: reloaded
+  when: bootstrap_ufw_ipv6_config.changed | default(false)
+
+- name: Verify host firewall is active
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/ufw
+      - status
+      - verbose
+  register: bootstrap_ufw_after_apply
+  changed_when: false
+
+- name: Confirm host firewall policy is active
+  ansible.builtin.assert:
+    that:
+      - bootstrap_ufw_after_apply.stdout is search('Status: active')
+      - bootstrap_ufw_after_apply.stdout is search('Default: deny \\(incoming\\)')
+      - bootstrap_ufw_after_apply.stdout is search('allow \\(outgoing\\)')
+      - bootstrap_ufw_after_apply.stdout is search('22/tcp')
+      - "'80/tcp' in bootstrap_ufw_after_apply.stdout or 'nginx' not in bootstrap_effective_services"
+      - "'443/tcp' in bootstrap_ufw_after_apply.stdout or 'nginx' not in bootstrap_effective_services"
+    fail_msg: The active UFW policy does not match the selected bootstrap profile.

@@ -1,0 +1,12 @@
+[Unit]
+# Managed by CentralDevOps bootstrap.
+Description=Schedule Outbound Marketing PostgreSQL backups
+
+[Timer]
+OnCalendar={{ bootstrap_postgresql_backup_interval }}
+Persistent=true
+AccuracySec=1min
+Unit=buzilion-outbound-postgresql-backup.service
+
+[Install]
+WantedBy=timers.target

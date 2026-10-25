@@ -1,0 +1,182 @@
+---
+- name: Validate exact Docker package pins
+  ansible.builtin.assert:
+    that:
+      - bootstrap_docker_ce_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - bootstrap_docker_cli_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - bootstrap_containerd_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - bootstrap_buildx_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - bootstrap_compose_package_version is match('^[A-Za-z0-9.+:~_-]+$')
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+      - ansible_facts['architecture'] in bootstrap_docker_apt_architectures
+    fail_msg: Docker requires Ubuntu 24.04 and reviewed exact package versions.
+
+- name: Define the pinned Docker package set
+  ansible.builtin.set_fact:
+    bootstrap_docker_package_versions:
+      docker-ce: "{{ bootstrap_docker_ce_package_version }}"
+      docker-ce-cli: "{{ bootstrap_docker_cli_package_version }}"
+      containerd.io: "{{ bootstrap_containerd_package_version }}"
+      docker-buildx-plugin: "{{ bootstrap_buildx_package_version }}"
+      docker-compose-plugin: "{{ bootstrap_compose_package_version }}"
+
+- name: Inspect installed Docker package versions before reconciliation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/dpkg-query
+      - -W
+      - -f=${Version}
+      - "{{ item.key }}"
+  loop: "{{ bootstrap_docker_package_versions | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: bootstrap_docker_installed_versions
+  failed_when: false
+  changed_when: false
+
+- name: Stop rather than downgrade or replace an unapproved Docker version
+  ansible.builtin.assert:
+    that:
+      - item.rc != 0 or item.stdout == item.item.value
+    fail_msg: >-
+      {{ item.item.key }} is installed at {{ item.stdout }} but the approved pin is
+      {{ item.item.value }}. Review the migration before changing it.
+  loop: "{{ bootstrap_docker_installed_versions.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+
+- name: Inspect Docker daemon configuration file
+  ansible.builtin.stat:
+    path: /etc/docker/daemon.json
+  register: bootstrap_docker_daemon_file
+
+- name: Refuse a symbolic-link Docker daemon configuration
+  ansible.builtin.assert:
+    that:
+      - not (bootstrap_docker_daemon_file.stat.islnk | default(false))
+    fail_msg: Docker daemon configuration is a symbolic link; review it before apply.
+
+- name: Read existing Docker daemon configuration
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: bootstrap_docker_daemon_content
+  when: bootstrap_docker_daemon_file.stat.exists
+
+- name: Parse existing Docker daemon configuration
+  ansible.builtin.set_fact:
+    bootstrap_docker_daemon_configuration: >-
+      {{ bootstrap_docker_daemon_content.content | b64decode | from_json }}
+  when: bootstrap_docker_daemon_file.stat.exists
+
+- name: Reject a Docker daemon configured for remote TCP access
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          bootstrap_docker_daemon_configuration.get('hosts', [])
+          | select('search', '^tcp://')
+          | list
+          | length
+        ) == 0
+    fail_msg: Existing Docker daemon configuration exposes a TCP listener; resolve it before apply.
+  when: bootstrap_docker_daemon_file.stat.exists
+
+- name: Create Docker APT keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Docker's official Ubuntu signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: "{{ bootstrap_docker_keyring_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate_certs: true
+
+- name: Configure Docker's signed APT repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ bootstrap_docker_apt_architectures[ansible_facts['architecture']] }}
+      signed-by={{ bootstrap_docker_keyring_path }}]
+      {{ bootstrap_docker_repository }} {{ ansible_facts['distribution_release'] }} stable
+    filename: docker
+    state: present
+    update_cache: true
+    validate_certs: true
+
+- name: Install the approved Docker Engine, CLI, containerd, Buildx, and Compose versions
+  ansible.builtin.apt:
+    name:
+      - "docker-ce={{ bootstrap_docker_ce_package_version }}"
+      - "docker-ce-cli={{ bootstrap_docker_cli_package_version }}"
+      - "containerd.io={{ bootstrap_containerd_package_version }}"
+      - "docker-buildx-plugin={{ bootstrap_buildx_package_version }}"
+      - "docker-compose-plugin={{ bootstrap_compose_package_version }}"
+    state: present
+    update_cache: false
+
+- name: Enable Docker at boot and start the daemon
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Verify Docker daemon is available
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - info
+      - --format
+      - "{{ '{{' }}.ServerVersion{{ '}}' }}"
+  register: bootstrap_docker_server_version
+  changed_when: false
+
+- name: Verify Docker Compose is available
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - version
+      - --short
+  register: bootstrap_docker_compose_version
+  changed_when: false
+
+- name: Verify Docker daemon does not expose a network listener
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - show
+      - --property=ExecStart
+      - --value
+      - docker.service
+  register: bootstrap_docker_exec_start
+  changed_when: false
+
+- name: Reject a Docker service command that binds a TCP socket
+  ansible.builtin.assert:
+    that:
+      - bootstrap_docker_exec_start.stdout is not search('tcp://')
+      - bootstrap_docker_exec_start.stdout is not search('0\\.0\\.0\\.0:2375')
+      - bootstrap_docker_exec_start.stdout is not search('0\\.0\\.0\\.0:2376')
+    fail_msg: Docker daemon configuration exposes a network socket.
+
+- name: Record Docker reconciliation result
+  ansible.builtin.set_fact:
+    bootstrap_service_status: >-
+      {{
+        bootstrap_service_status
+        | combine(
+            {
+              'docker': 'compliant; server '
+              + bootstrap_docker_server_version.stdout
+              + ', Compose '
+              + bootstrap_docker_compose_version.stdout
+            }
+          )
+      }}

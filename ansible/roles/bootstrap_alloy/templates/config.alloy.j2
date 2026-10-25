@@ -1,0 +1,77 @@
+// Managed by CentralDevOps bootstrap.
+prometheus.exporter.unix "host" {
+}
+
+prometheus.relabel "instance" {
+  forward_to = [prometheus.remote_write.grafana.receiver]
+
+  rule {
+    action = "replace"
+    target_label = "instance"
+    replacement = "{{ bootstrap_grafana_instance_label }}"
+  }
+}
+
+prometheus.scrape "host" {
+  targets = prometheus.exporter.unix.host.targets
+  forward_to = [prometheus.relabel.instance.receiver]
+}
+
+prometheus.remote_write "grafana" {
+  endpoint {
+    url = "{{ bootstrap_grafana_prometheus_url }}"
+
+    basic_auth {
+      username = "{{ bootstrap_grafana_prometheus_user }}"
+      password = sys.env("GRAFANA_CLOUD_API_TOKEN")
+    }
+  }
+}
+
+loki.source.journal "host" {
+  max_age = "12h"
+  forward_to = [loki.write.grafana.receiver]
+}
+
+loki.write "grafana" {
+  endpoint {
+    url = "{{ bootstrap_grafana_loki_url }}"
+
+    basic_auth {
+      username = "{{ bootstrap_grafana_loki_user }}"
+      password = sys.env("GRAFANA_CLOUD_API_TOKEN")
+    }
+  }
+}
+
+otelcol.receiver.otlp "host" {
+  grpc {
+    endpoint = "127.0.0.1:4317"
+  }
+
+  http {
+    endpoint = "127.0.0.1:4318"
+  }
+
+  output {
+    traces = [otelcol.exporter.otlp.grafana.input]
+  }
+}
+
+otelcol.auth.basic "grafana" {
+  client_auth {
+    username = "{{ bootstrap_grafana_tempo_user }}"
+    password = sys.env("GRAFANA_CLOUD_API_TOKEN")
+  }
+}
+
+otelcol.exporter.otlp "grafana" {
+  client {
+    endpoint = "{{ bootstrap_grafana_otlp_endpoint }}"
+    auth = otelcol.auth.basic.grafana.handler
+
+    tls {
+      insecure = false
+    }
+  }
+}

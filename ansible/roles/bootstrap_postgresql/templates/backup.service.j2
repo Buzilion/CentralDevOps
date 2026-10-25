@@ -1,0 +1,12 @@
+[Unit]
+# Managed by CentralDevOps bootstrap.
+Description=Back up Outbound Marketing PostgreSQL to Cloudeka S3
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/buzilion-outbound-postgresql-backup
+User=root
+Group=root
+UMask=0077

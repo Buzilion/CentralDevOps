@@ -1,13 +1,119 @@
 ---
-- name: Bootstrap application VPS hosts
-  hosts: customer_builder_engine
+- name: Validate or bootstrap one approved VPS
+  hosts: all
+  become: true
   gather_facts: true
-  roles:
-    - role: ssh
-      become: false
-    - role: base
-      become: true
-    - role: security
-      become: true
-    - role: docker
-      become: true
+  vars_files:
+    - ../vars/bootstrap-routes.yml
+  vars:
+    bootstrap_deploy_user: deploy
+    ansible_user: "{{ bootstrap_connection_user }}"
+    ansible_ssh_common_args: "{{ bootstrap_ssh_common_args }}"
+  tasks:
+    - name: Validate the target contract and selected service profile
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: validate
+
+    - name: Perform a read-only host and service assessment
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: inspect
+
+    - name: Inspect selected PostgreSQL recovery state
+      ansible.builtin.include_role:
+        name: bootstrap_postgresql
+        tasks_from: inspect
+      when: "'postgresql' in bootstrap_effective_services"
+
+    - name: Write the read-only validation report
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: report
+      when: bootstrap_mode == 'validate'
+
+    - name: Stop after read-only validation
+      ansible.builtin.meta: end_play
+      when: bootstrap_mode == 'validate'
+
+    - name: Apply the host baseline and report any pending reboot
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: base
+
+    - name: Create and verify the deployment account
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: deploy-account
+
+    - name: Verify a new deploy SSH session before restricting SSH
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: verify-deploy-access
+
+    - name: Remove other deploy keys only after the approved key works
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: lock-deploy-keys
+
+    - name: Apply the host firewall policy
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: firewall
+
+    - name: Harden SSH and switch Ansible to the verified deploy account
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: ssh
+
+    - name: Switch Ansible to the verified deploy SSH connection
+      ansible.builtin.set_fact:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_password: null
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+        ansible_ssh_common_args: "{{ bootstrap_deploy_ssh_common_args }}"
+
+    - name: Reconcile selected Docker services
+      ansible.builtin.include_role:
+        name: bootstrap_docker
+      vars:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+      when: "'docker' in bootstrap_effective_services"
+
+    - name: Reconcile selected Nginx route and TLS
+      ansible.builtin.include_role:
+        name: bootstrap_nginx
+      vars:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+      when: "'nginx' in bootstrap_effective_services"
+
+    - name: Reconcile selected PostgreSQL and recovery schedule
+      ansible.builtin.include_role:
+        name: bootstrap_postgresql
+      vars:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+      when: "'postgresql' in bootstrap_effective_services"
+
+    - name: Reconcile selected Grafana Cloud Alloy
+      ansible.builtin.include_role:
+        name: bootstrap_alloy
+      vars:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+      when: "'alloy' in bootstrap_effective_services"
+
+    - name: Verify final host health
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: health
+      vars:
+        ansible_user: "{{ bootstrap_deploy_user }}"
+        ansible_ssh_private_key_file: "{{ bootstrap_deploy_private_key_file }}"
+
+    - name: Write the final non-secret report
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: report

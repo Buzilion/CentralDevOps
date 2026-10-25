@@ -1,0 +1,14 @@
+# Managed by CentralDevOps bootstrap.
+server {
+    listen 80;
+    server_name {{ bootstrap_route.fqdn }};
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 404;
+    }
+}

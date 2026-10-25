@@ -1,0 +1,13 @@
+---
+bootstrap_postgresql_directory: /opt/buzilion/outbound-marketing/postgresql
+bootstrap_postgresql_config_directory: /etc/buzilion/postgresql
+bootstrap_postgresql_state_directory: /var/lib/buzilion/postgresql
+bootstrap_postgresql_compose_file: /opt/buzilion/outbound-marketing/postgresql/compose.yaml
+bootstrap_postgresql_container_name: outbound-postgres
+bootstrap_postgresql_volume_name: outbound_postgres_data
+bootstrap_postgresql_network_name: om-backend
+bootstrap_postgresql_data_directory: ""
+bootstrap_postgresql_bucket: buz-stg-prod-1-lb4jef
+bootstrap_postgresql_s3_endpoint: https://kencana.basic.box.cloudeka.id
+bootstrap_postgresql_s3_region: kencana
+bootstrap_postgresql_backup_interval: hourly

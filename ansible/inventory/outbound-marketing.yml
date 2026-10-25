@@ -1,17 +1,16 @@
 outbound-marketing:
   children:
-    development:
-      hosts:
-        buz-dev-om-1:
-          ansible_host: 43.157.247.221
-          ansible_user: deploy
     staging:
       hosts:
         buz-staging-om-1:
           ansible_host: 43.157.247.221
           ansible_user: deploy
+          bootstrap_user: ubuntu
+          bootstrap_host_id: buz-stg-1
     production:
       hosts:
         buz-prod-om-1:
           ansible_host: 43.157.247.221
           ansible_user: deploy
+          bootstrap_user: ubuntu
+          bootstrap_host_id: buz-prod-1

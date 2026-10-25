@@ -1,0 +1,27 @@
+# Managed by CentralDevOps bootstrap.
+services:
+  nginx:
+    image: "{{ bootstrap_nginx_image }}"
+    container_name: "{{ bootstrap_nginx_container_name }}"
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "{{ bootstrap_nginx_directory }}/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "{{ bootstrap_nginx_conf_directory }}:/etc/nginx/conf.d:ro"
+      - "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt:ro"
+      - "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot:ro"
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  proxy:
+    name: "{{ bootstrap_route.proxy_network }}"
+    external: true

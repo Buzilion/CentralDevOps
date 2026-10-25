@@ -1,0 +1,588 @@
+---
+- name: Verify supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+    fail_msg: >-
+      Bootstrap supports Ubuntu Server 24.04 LTS only; found
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+
+- name: Initialize non-secret bootstrap warnings
+  ansible.builtin.set_fact:
+    bootstrap_warnings: []
+
+- name: Verify bootstrap privilege escalation without changing the host
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -u
+  register: bootstrap_become_uid
+  changed_when: false
+
+- name: Require non-interactive root privilege escalation
+  ansible.builtin.assert:
+    that:
+      - bootstrap_become_uid.stdout == '0'
+    fail_msg: The provider bootstrap account must have non-interactive sudo access.
+
+- name: Verify current SSH daemon configuration before any change
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -t
+  changed_when: false
+
+- name: Inspect existing deploy group membership
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -nG
+      - "{{ bootstrap_deploy_user }}"
+  register: bootstrap_deploy_groups_before
+  failed_when: false
+  changed_when: false
+
+- name: Refuse to remove unapproved existing deploy group membership
+  ansible.builtin.assert:
+    that:
+      - bootstrap_deploy_groups_before.stdout.split() | length == 1
+      - bootstrap_deploy_groups_before.stdout.split()[0] == bootstrap_deploy_user
+    fail_msg: >-
+      Existing deploy account has supplementary groups
+      {{ bootstrap_deploy_groups_before.stdout.split() }}. Review them before apply.
+  when: bootstrap_deploy_groups_before.rc == 0
+
+- name: Inspect existing deploy path types
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ bootstrap_deploy_home }}"
+    - "{{ bootstrap_deploy_ssh_directory }}"
+    - "{{ bootstrap_deploy_authorized_keys }}"
+  register: bootstrap_deploy_path_types
+  loop_control:
+    label: "{{ item }}"
+
+- name: Refuse to manage deploy paths through symbolic links
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.islnk | default(false))
+    fail_msg: Refusing to manage deploy path {{ item.item }} because it is a symbolic link.
+  loop: "{{ bootstrap_deploy_path_types.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Inspect existing managed sudoers drop-in
+  ansible.builtin.stat:
+    path: "{{ bootstrap_deploy_sudoers_file }}"
+  register: bootstrap_sudoers_before
+
+- name: Refuse a symbolic-link sudoers drop-in
+  ansible.builtin.assert:
+    that:
+      - not (bootstrap_sudoers_before.stat.islnk | default(false))
+    fail_msg: The managed sudoers path is a symbolic link; review it before apply.
+
+- name: Read existing managed sudoers drop-in
+  ansible.builtin.slurp:
+    src: "{{ bootstrap_deploy_sudoers_file }}"
+  register: bootstrap_sudoers_content
+  when: bootstrap_sudoers_before.stat.exists
+
+- name: Refuse to overwrite an unmanaged sudoers drop-in
+  ansible.builtin.assert:
+    that:
+      - "'Managed by CentralDevOps bootstrap.' in (bootstrap_sudoers_content.content | b64decode)"
+    fail_msg: Existing /etc/sudoers.d/90-deploy is unmanaged; review it before apply.
+  when: bootstrap_sudoers_before.stat.exists
+
+- name: Inspect existing managed SSH drop-in
+  ansible.builtin.stat:
+    path: "{{ bootstrap_ssh_dropin }}"
+  register: bootstrap_ssh_dropin_stat
+
+- name: Refuse a symbolic-link SSH drop-in
+  ansible.builtin.assert:
+    that:
+      - not (bootstrap_ssh_dropin_stat.stat.islnk | default(false))
+    fail_msg: The managed SSH drop-in is a symbolic link; review it before apply.
+
+- name: Read existing managed SSH drop-in
+  ansible.builtin.slurp:
+    src: "{{ bootstrap_ssh_dropin }}"
+  register: bootstrap_ssh_dropin_content
+  when: bootstrap_ssh_dropin_stat.stat.exists
+
+- name: Refuse to overwrite an unmanaged SSH drop-in
+  ansible.builtin.assert:
+    that:
+      - "'Managed by CentralDevOps bootstrap.' in (bootstrap_ssh_dropin_content.content | b64decode)"
+    fail_msg: Existing SSH hardening drop-in is unmanaged; review it before apply.
+  when: bootstrap_ssh_dropin_stat.stat.exists
+
+- name: Inspect existing managed Fail2ban jail
+  ansible.builtin.stat:
+    path: "{{ bootstrap_fail2ban_jail }}"
+  register: bootstrap_fail2ban_jail_stat
+
+- name: Refuse a symbolic-link Fail2ban jail
+  ansible.builtin.assert:
+    that:
+      - not (bootstrap_fail2ban_jail_stat.stat.islnk | default(false))
+    fail_msg: The managed Fail2ban path is a symbolic link; review it before apply.
+
+- name: Read existing managed Fail2ban jail
+  ansible.builtin.slurp:
+    src: "{{ bootstrap_fail2ban_jail }}"
+  register: bootstrap_fail2ban_jail_content
+  when: bootstrap_fail2ban_jail_stat.stat.exists
+
+- name: Refuse to overwrite an unmanaged Fail2ban jail
+  ansible.builtin.assert:
+    that:
+      - "'Managed by CentralDevOps bootstrap.' in (bootstrap_fail2ban_jail_content.content | b64decode)"
+    fail_msg: Existing Fail2ban SSH jail is unmanaged; review it before apply.
+  when: bootstrap_fail2ban_jail_stat.stat.exists
+
+- name: Inspect failed systemd units
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - --failed
+      - --no-legend
+      - --plain
+  register: bootstrap_failed_units
+  changed_when: false
+
+- name: Fail when systemd reports failed units
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_failed_units.stdout_lines
+        | reject('match', '^\\s*0 loaded units listed\\.?\\s*$')
+        | list
+        | length == 0
+    fail_msg: Resolve failed systemd units before applying VPS bootstrap changes.
+
+- name: Inspect public listeners
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/ss
+      - -H
+      - -lntup
+  register: bootstrap_public_listener_output
+  changed_when: false
+
+- name: Build the expected public listener allowlist
+  ansible.builtin.set_fact:
+    bootstrap_expected_public_ports: >-
+      {{
+        bootstrap_allowed_base_ports
+        + ([80, 443] if 'nginx' in bootstrap_effective_services else [])
+      }}
+    bootstrap_public_address_patterns: >-
+      {{
+        ['0.0.0.0', '*', '[::]']
+        + ([ansible_facts['default_ipv4']['address']] if ansible_facts['default_ipv4'] is defined else [])
+        + ([ansible_facts['default_ipv6']['address']] if ansible_facts['default_ipv6'] is defined else [])
+      }}
+
+- name: Extract public listening ports
+  ansible.builtin.set_fact:
+    bootstrap_public_listener_ports: >-
+      {{
+        bootstrap_public_listener_output.stdout
+        | regex_findall(
+            '(?:'
+            + (bootstrap_public_address_patterns | map('regex_escape') | join('|'))
+            + '):([0-9]{1,5})'
+          )
+        | map('int')
+        | unique
+        | list
+      }}
+
+- name: Reject unexpected public listeners
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_public_listener_ports
+        | difference(bootstrap_expected_public_ports)
+        | length == 0
+    fail_msg: >-
+      Unexpected public listeners were found on ports
+      {{ bootstrap_public_listener_ports | difference(bootstrap_expected_public_ports) }}.
+      Review them before changing the firewall or optional services.
+
+- name: Inspect host firewall rules
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/ufw
+      - status
+      - numbered
+  register: bootstrap_ufw_status
+  failed_when: false
+  changed_when: false
+
+- name: Inspect saved UFW rules even when the firewall is inactive
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/ufw
+      - show
+      - added
+  register: bootstrap_ufw_saved_rules
+  failed_when: false
+  changed_when: false
+
+- name: Identify unrecognized public UFW allow rules
+  ansible.builtin.set_fact:
+    bootstrap_unrecognized_ufw_rules: []
+
+- name: Check every existing UFW allow rule against the selected profile
+  ansible.builtin.set_fact:
+    bootstrap_unrecognized_ufw_rules: "{{ bootstrap_unrecognized_ufw_rules + [item] }}"
+  loop: >-
+    {{
+      bootstrap_ufw_status.stdout_lines
+      | select('search', 'ALLOW IN')
+      | list
+    }}
+  when: >-
+    not item is search(
+      '^\\[\\s*[0-9]+\\]\\s+('
+      + (
+          (
+            bootstrap_expected_public_ports
+            | map('string')
+            | map('regex_replace', '$', '/tcp')
+            | map('regex_escape')
+            | join('|')
+          )
+        )
+      + ')(?:\\s+\\(v6\\))?\\s+ALLOW IN\\b'
+    )
+
+- name: Stop before mutation when UFW contains an unrecognized public allow rule
+  ansible.builtin.assert:
+    that:
+      - bootstrap_unrecognized_ufw_rules | length == 0
+    fail_msg: >-
+      UFW contains public allow rules outside the selected profile:
+      {{ bootstrap_unrecognized_ufw_rules }}. Review them before apply.
+
+- name: Identify unrecognized saved UFW allow rules
+  ansible.builtin.set_fact:
+    bootstrap_unrecognized_ufw_saved_rules: []
+
+- name: Check saved UFW rules against the selected profile
+  ansible.builtin.set_fact:
+    bootstrap_unrecognized_ufw_saved_rules: >-
+      {{ bootstrap_unrecognized_ufw_saved_rules + [item] }}
+  loop: >-
+    {{
+      bootstrap_ufw_saved_rules.stdout_lines
+      | select('match', '^ufw allow ')
+      | list
+    }}
+  when: >-
+    not item is search(
+      '^ufw allow ('
+      + (
+          (
+            bootstrap_expected_public_ports
+            | map('string')
+            | map('regex_replace', '$', '/tcp')
+            | map('regex_escape')
+            | join('|')
+          )
+        )
+      + ')$'
+    )
+
+- name: Stop before enabling UFW when saved allow rules are unrecognized
+  ansible.builtin.assert:
+    that:
+      - bootstrap_unrecognized_ufw_saved_rules | length == 0
+    fail_msg: >-
+      Saved UFW rules include public allows outside the selected profile:
+      {{ bootstrap_unrecognized_ufw_saved_rules }}. Review them before apply.
+
+- name: Inspect package updates without changing packages
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/apt-get
+      - --simulate
+      - upgrade
+  register: bootstrap_package_simulation
+  changed_when: false
+
+- name: Record the proposed package transaction
+  ansible.builtin.set_fact:
+    bootstrap_package_update_candidates: >-
+      {{
+        bootstrap_package_simulation.stdout_lines
+        | select('match', '^Inst ')
+        | list
+      }}
+
+- name: Inspect pending reboot state
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: bootstrap_reboot_required_stat
+
+- name: Save initial pending reboot state
+  ansible.builtin.set_fact:
+    bootstrap_pending_reboot: "{{ bootstrap_reboot_required_stat.stat.exists }}"
+
+- name: Read pending reboot package information
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - /var/run/reboot-required.pkgs
+  register: bootstrap_reboot_required_packages
+  failed_when: false
+  changed_when: false
+  when: bootstrap_reboot_required_stat.stat.exists
+
+- name: Save pending reboot package names for the validation report
+  ansible.builtin.set_fact:
+    bootstrap_pending_reboot_packages: >-
+      {{ bootstrap_reboot_required_packages.stdout_lines | default([]) }}
+
+- name: Inspect memory pressure
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/cat
+      - /proc/pressure/memory
+  register: bootstrap_memory_pressure
+  failed_when: false
+  changed_when: false
+
+- name: Inspect critical filesystem usage
+  ansible.builtin.assert:
+    that:
+      - item.size_total | int > 0
+      - >-
+        (
+          100 * (item.size_total | int - item.size_available | int)
+          / (item.size_total | int)
+        ) < 90
+    fail_msg: Critical filesystem {{ item.mount }} is at least 90% used.
+  loop: >-
+    {{
+      ansible_facts['mounts']
+      | selectattr('mount', 'in', bootstrap_critical_mounts)
+      | list
+    }}
+  loop_control:
+    label: "{{ item.mount }}"
+
+- name: Warn when a critical filesystem exceeds 80% usage
+  ansible.builtin.debug:
+    msg: >-
+      Warning: critical filesystem {{ item.mount }} is more than 80% used.
+  loop: >-
+    {{
+      ansible_facts['mounts']
+      | selectattr('mount', 'in', bootstrap_critical_mounts)
+      | list
+    }}
+  loop_control:
+    label: "{{ item.mount }}"
+  when: >-
+    item.size_total | int > 0
+    and (
+      100 * (item.size_total | int - item.size_available | int)
+      / (item.size_total | int)
+    ) > 80
+
+- name: Record critical filesystem usage warnings
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Critical filesystem ' + item.mount + ' is more than 80% used.']
+      }}
+  loop: >-
+    {{
+      ansible_facts['mounts']
+      | selectattr('mount', 'in', bootstrap_critical_mounts)
+      | list
+    }}
+  loop_control:
+    label: "{{ item.mount }}"
+  when: >-
+    item.size_total | int > 0
+    and (
+      100 * (item.size_total | int - item.size_available | int)
+      / (item.size_total | int)
+    ) > 80
+
+- name: Inspect Docker availability
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - info
+      - --format
+      - "{{ '{{' }}.ServerVersion{{ '}}' }}"
+  register: bootstrap_docker_version_check
+  failed_when: false
+  changed_when: false
+
+- name: Inspect the Docker executable
+  ansible.builtin.stat:
+    path: /usr/bin/docker
+  register: bootstrap_docker_executable
+
+- name: Refuse to assess selected Docker services when an existing daemon is unavailable
+  ansible.builtin.assert:
+    that:
+      - bootstrap_docker_version_check.rc == 0
+    fail_msg: >-
+      Docker is installed but its daemon is unavailable. Restore it manually so
+      selected containers and persistent data can be inspected safely.
+  when:
+    - bootstrap_docker_executable.stat.exists
+    - bootstrap_effective_services | intersect(['docker', 'nginx', 'postgresql']) | length > 0
+
+- name: Inspect Docker Compose availability
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - compose
+      - version
+      - --short
+  register: bootstrap_compose_version_check
+  failed_when: false
+  changed_when: false
+  when: bootstrap_docker_version_check.rc == 0
+
+- name: Inspect managed service states
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker
+      - ps
+      - --all
+      - --format
+      - "{{ '{{' }}.Names{{ '}}' }}\\t{{ '{{' }}.Status{{ '}}' }}"
+  register: bootstrap_docker_containers
+  failed_when: false
+  changed_when: false
+  when: bootstrap_docker_version_check.rc == 0
+
+- name: Refuse to take over an existing public HTTP listener
+  ansible.builtin.assert:
+    that:
+      - bootstrap_docker_version_check.rc == 0
+      - "'buzilion-nginx' in (bootstrap_docker_containers.stdout | default(''))"
+    fail_msg: >-
+      TCP/80 or TCP/443 is already listening outside the managed Nginx container.
+      Review the existing service before selecting Nginx.
+  when:
+    - "'nginx' in bootstrap_effective_services"
+    - bootstrap_public_listener_ports | intersect([80, 443]) | length > 0
+
+- name: Inspect Alloy service state
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - alloy
+  register: bootstrap_alloy_state
+  failed_when: false
+  changed_when: false
+
+- name: Collect non-secret reconciliation status
+  ansible.builtin.set_fact:
+    bootstrap_service_status:
+      docker: >-
+        {{
+          'absent'
+          if not bootstrap_docker_executable.stat.exists
+          else (
+            'installed but daemon unavailable'
+            if bootstrap_docker_version_check.rc != 0
+            else 'installed; version/configuration requires comparison with approved pins'
+          )
+        }}
+      nginx: >-
+        {{
+          (
+            'not selected; existing container present'
+            if 'buzilion-nginx' in (bootstrap_docker_containers.stdout | default(''))
+            else 'not selected'
+          )
+          if 'nginx' not in bootstrap_effective_services
+          else (
+            'present; inspect container configuration'
+            if 'buzilion-nginx' in (bootstrap_docker_containers.stdout | default(''))
+            else 'absent; apply would install'
+          )
+        }}
+      postgresql: >-
+        {{
+          (
+            'not selected; existing container present'
+            if 'outbound-postgres' in (bootstrap_docker_containers.stdout | default(''))
+            else 'not selected'
+          )
+          if 'postgresql' not in bootstrap_effective_services
+          else (
+            'present; inspect image, volume, backup, and health'
+            if 'outbound-postgres' in (bootstrap_docker_containers.stdout | default(''))
+            else 'absent; apply would install'
+          )
+        }}
+      alloy: >-
+        {{
+          (
+            'not selected; service is active'
+            if bootstrap_alloy_state.rc == 0
+            else 'not selected'
+          )
+          if 'alloy' not in bootstrap_effective_services
+          else (
+            'active; inspect configuration and delivery'
+            if bootstrap_alloy_state.rc == 0
+            else 'absent or inactive; apply would reconcile'
+          )
+        }}
+
+- name: Record pending reboot warning
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['A reboot is pending; apply will check whether its package transaction requires an immediate reboot.']
+      }}
+  when: bootstrap_reboot_required_stat.stat.exists
+
+- name: Record deferred package updates warning
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Package updates are available; apply will inspect and defer them outside the maintenance window.']
+      }}
+  when: bootstrap_package_update_candidates | length > 0
+
+- name: Record manual provider firewall boundary
+  ansible.builtin.set_fact:
+    bootstrap_warnings: >-
+      {{
+        bootstrap_warnings
+        + ['Sumopod firewall policy is managed manually and is not verified by this workflow.']
+      }}
+
+- name: Report read-only host assessment
+  ansible.builtin.debug:
+    msg:
+      operating_system: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+      available_memory_mb: "{{ ansible_facts['memory_mb']['real']['available'] | default('unknown') }}"
+      memory_pressure: "{{ bootstrap_memory_pressure.stdout | default('unavailable') }}"
+      public_listening_ports: "{{ bootstrap_public_listener_ports }}"
+      failed_units: "{{ bootstrap_failed_units.stdout_lines }}"
+      package_update_candidates: "{{ bootstrap_package_update_candidates | length }}"
+      pending_reboot: "{{ bootstrap_reboot_required_stat.stat.exists }}"
+      services: "{{ bootstrap_service_status }}"

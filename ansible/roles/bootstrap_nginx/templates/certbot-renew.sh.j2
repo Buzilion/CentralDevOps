@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+docker run --rm \
+  -v "{{ bootstrap_nginx_letsencrypt_directory }}:/etc/letsencrypt" \
+  -v "{{ bootstrap_nginx_webroot_directory }}:/var/www/certbot" \
+  "{{ bootstrap_certbot_image }}" \
+  renew \
+  --non-interactive \
+  --quiet \
+  --webroot-path /var/www/certbot
+
+docker exec "{{ bootstrap_nginx_container_name }}" nginx -s reload
