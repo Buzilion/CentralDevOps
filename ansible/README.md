@@ -1,6 +1,6 @@
 # Ansible
 
-This directory is the central source of truth for Ansible configuration used by Buzilion VPS deployments. `ansible.cfg` and `requirements.yml` provide the shared Ansible configuration and pinned collections; the GitHub workflows pin the Ansible controller version.
+This directory is the central source of truth for Ansible configuration used by Buzilion VPS deployments. `ansible.cfg` provides shared configuration, `requirements.txt` pins the Ansible controller package, and `requirements.yml` pins Galaxy collections. GitHub workflows use these manifests for dependency installation and cache invalidation.
 
 ## Reusable application deployment
 
