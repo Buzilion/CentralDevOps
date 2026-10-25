@@ -10,6 +10,7 @@
     app_service_name: "{{ lookup('ansible.builtin.env', 'APP_SERVICE_NAME') }}"
     app_deploy_directory: "{{ lookup('ansible.builtin.env', 'APP_DEPLOY_DIRECTORY') }}"
     app_proxy_network: "{{ lookup('ansible.builtin.env', 'APP_PROXY_NETWORK') }}"
+    app_backend_network: "{{ lookup('ansible.builtin.env', 'APP_BACKEND_NETWORK') | default('', true) }}"
     app_healthcheck_path: "{{ lookup('ansible.builtin.env', 'APP_HEALTHCHECK_PATH') }}"
     app_runtime_environment: "{{ lookup('ansible.builtin.env', 'APP_RUNTIME_ENVIRONMENT_JSON') | default('{}', true) | from_json }}"
   pre_tasks:
@@ -23,6 +24,8 @@
           - app_deploy_directory is match('^/[A-Za-z0-9._/-]+$')
           - "'..' not in app_deploy_directory.split('/')"
           - app_proxy_network is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+          - app_backend_network == '' or app_backend_network is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+          - app_backend_network == '' or app_backend_network != app_proxy_network
           - app_healthcheck_path == '' or app_healthcheck_path is match('^/.*$')
           - app_runtime_environment is mapping
         fail_msg: The image tag or deployment settings are invalid.

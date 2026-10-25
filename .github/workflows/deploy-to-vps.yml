@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       target_environment:
-        description: GitHub Environment and inventory group to deploy to
+        description: GitHub Environment and inventory group to deploy to (staging or production)
         required: true
         type: string
       image_tag:
@@ -35,6 +35,11 @@ on:
         description: Docker network shared with the reverse proxy
         required: true
         type: string
+      backend_network:
+        description: Optional Docker network shared with backend services such as a database
+        required: false
+        type: string
+        default: ""
       healthcheck_path:
         description: Optional Node.js HTTP endpoint path to require a 200 response from
         required: false
@@ -56,8 +61,27 @@ on:
         required: false
 
 jobs:
+  validate-target:
+    name: Validate VPS deployment target
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a supported VPS environment
+        shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          case "$TARGET_ENVIRONMENT" in
+            staging|production)
+              ;;
+            *)
+              echo "::error::target_environment must be staging or production; development runs locally."
+              exit 1
+              ;;
+          esac
+
   deploy:
     name: Deploy ${{ inputs.app_name }} to ${{ inputs.target_environment }}
+    needs: validate-target
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.target_environment }}
@@ -169,6 +193,7 @@ jobs:
           SERVICE_NAME: ${{ inputs.service_name }}
           DEPLOY_DIRECTORY: ${{ inputs.deploy_directory }}
           PROXY_NETWORK: ${{ inputs.proxy_network }}
+          BACKEND_NETWORK: ${{ inputs.backend_network }}
           HEALTHCHECK_PATH: ${{ inputs.healthcheck_path }}
           REQUIRED_RUNTIME_VARIABLES_JSON: ${{ inputs.required_runtime_variables_json }}
           VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
@@ -225,6 +250,7 @@ jobs:
           service_name = required("SERVICE_NAME")
           deploy_directory = required("DEPLOY_DIRECTORY")
           proxy_network = required("PROXY_NETWORK")
+          backend_network = os.environ.get("BACKEND_NETWORK", "")
           required("VPS_SSH_PRIVATE_KEY")
           required("VPS_KNOWN_HOSTS")
           required("REGISTRY_USERNAME")
@@ -256,6 +282,12 @@ jobs:
               fail("deploy_directory must be an absolute app-specific path without '..'.")
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", proxy_network):
               fail("proxy_network contains invalid characters.")
+          if backend_network and not re.fullmatch(
+              r"[A-Za-z0-9][A-Za-z0-9_.-]*", backend_network
+          ):
+              fail("backend_network contains invalid characters.")
+          if backend_network and backend_network == proxy_network:
+              fail("backend_network must be distinct from proxy_network.")
           healthcheck_path = os.environ.get("HEALTHCHECK_PATH", "")
           if healthcheck_path and (
               not healthcheck_path.startswith("/")
@@ -332,6 +364,7 @@ jobs:
           APP_SERVICE_NAME: ${{ inputs.service_name }}
           APP_DEPLOY_DIRECTORY: ${{ inputs.deploy_directory }}
           APP_PROXY_NETWORK: ${{ inputs.proxy_network }}
+          APP_BACKEND_NETWORK: ${{ inputs.backend_network }}
           APP_HEALTHCHECK_PATH: ${{ inputs.healthcheck_path }}
           APP_RUNTIME_ENV_FILE: ${{ steps.prepare_runtime_config.outputs.runtime_environment_file }}
           GHCR_USERNAME: ${{ vars.GHCR_USERNAME || github.actor }}

@@ -43,6 +43,29 @@
       - "{{ app_proxy_network }}"
   when: proxy_network.rc != 0
 
+- name: Ensure shared backend network exists
+  when: app_backend_network | length > 0
+  block:
+    - name: Inspect shared backend network
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - inspect
+          - "{{ app_backend_network }}"
+      register: backend_network
+      changed_when: false
+      failed_when: false
+
+    - name: Create shared backend network when absent
+      ansible.builtin.command:
+        argv:
+          - docker
+          - network
+          - create
+          - "{{ app_backend_network }}"
+      when: backend_network.rc != 0
+
 - name: Validate deployment Compose configuration
   ansible.builtin.command:
     argv:
@@ -101,6 +124,7 @@
       - compose
       - up
       - --detach
+      - --remove-orphans
       - --no-build
       - --pull
       - never

@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       release_environment:
-        description: Release environment selected by the caller's workflow dispatch
+        description: Release channel selected by the caller; this does not select a VPS environment
         required: false
         type: string
       release_version:
@@ -110,7 +110,7 @@ jobs:
             const releaseVersion = process.env.RELEASE_VERSION;
             const supportedEnvironments = ['development', 'staging', 'production'];
             if (!supportedEnvironments.includes(releaseEnvironment)) {
-              throw new Error('release_environment must be development, staging, or production.');
+              throw new Error('release_environment must be development, staging, or production (release channel only).');
             }
 
             if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(releaseVersion || '')) {

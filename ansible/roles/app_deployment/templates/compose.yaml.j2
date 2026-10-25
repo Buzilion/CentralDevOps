@@ -15,8 +15,16 @@ services:
     restart: unless-stopped
     networks:
       - proxy
+{% if app_backend_network %}
+      - backend
+{% endif %}
 
 networks:
   proxy:
     external: true
     name: "{{ app_proxy_network }}"
+{% if app_backend_network %}
+  backend:
+    external: true
+    name: "{{ app_backend_network }}"
+{% endif %}
