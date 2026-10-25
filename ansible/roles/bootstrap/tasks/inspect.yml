@@ -184,8 +184,18 @@
     bootstrap_public_address_patterns: >-
       {{
         ['0.0.0.0', '*', '[::]']
-        + ([ansible_facts['default_ipv4']['address']] if ansible_facts['default_ipv4'] is defined else [])
-        + ([ansible_facts['default_ipv6']['address']] if ansible_facts['default_ipv6'] is defined else [])
+        + (
+            [ansible_facts.get('default_ipv4', {}).get('address')]
+            if ansible_facts.get('default_ipv4', {}) is mapping
+            and ansible_facts.get('default_ipv4', {}).get('address')
+            else []
+          )
+        + (
+            [ansible_facts.get('default_ipv6', {}).get('address')]
+            if ansible_facts.get('default_ipv6', {}) is mapping
+            and ansible_facts.get('default_ipv6', {}).get('address')
+            else []
+          )
       }}
 
 - name: Extract public listening ports
