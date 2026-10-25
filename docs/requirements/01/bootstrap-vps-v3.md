@@ -47,7 +47,7 @@ Nginx and PostgreSQL are containerized and therefore depend on Docker. Selecting
 
 GitHub Actions cannot dynamically populate a host dropdown from an inventory file. The host input must therefore be a string and must be validated before any remote changes. Reject unknown inventory files, aliases not present in the selected inventory, groups, wildcards, multiple hosts, arbitrary IP addresses, and arbitrary DNS names.
 
-The inventory must identify the target's environment unambiguously so `apply` can use the corresponding protected GitHub Environment. Production changes require that Environment's approval rules. Serialize runs by the stable physical-host identifier, not merely by inventory alias, so aliases for the same VPS cannot be changed concurrently.
+The inventory group must identify the target app environment unambiguously. `bootstrap_environment` optionally selects the protected GitHub Environment for bootstrap credentials and approvals; when unset, it defaults to the inventory group. If a physical VPS is shared by staging and production aliases, configure one effective bootstrap Environment for those aliases. Any host ID that includes a production alias must use Production. Serialize runs by the stable physical-host identifier, not merely by inventory alias, so aliases for the same VPS cannot be changed concurrently.
 
 Treat all dispatch values as untrusted input: validate against strict allowlists and do not interpolate raw values into shell scripts. Restrict `apply` to an approved protected ref, grant the workflow only the permissions it needs, and pin third-party actions to reviewed immutable revisions. Never accept credentials or keys as dispatch inputs.
 
@@ -58,7 +58,8 @@ Each selectable host must provide:
 - `ansible_host`: the SSH connection address.
 - `bootstrap_host_id`: a stable identifier for the physical VPS, used for collision detection and concurrency control.
 - `bootstrap_user`: the provider-created account used only for initial configuration.
-- An unambiguous environment classification for GitHub approval and credential selection.
+- An unambiguous `staging` or `production` inventory group for app-specific behavior.
+- Optional `bootstrap_environment`: the effective protected Environment for bootstrap approval and credentials; aliases for the same physical host must resolve to one value.
 - `bootstrap_fqdn` only when a host-level DNS/TLS check is required.
 - Explicit service-route configuration, including the FQDN, when Nginx is selected.
 
@@ -71,10 +72,10 @@ The inspected inventories currently define these aliases:
 
 Repository facts and remaining identity checks:
 
-- All four aliases currently use `ansible_host: 43.157.247.221` and `ansible_user: deploy`; the inventories do not yet contain `bootstrap_user` or `bootstrap_host_id`.
-- Feedback records one active Sumopod VPS, `buz-prod-1`, and uses it as a temporary `bootstrap_host_id` for all four aliases. Verify the live provider topology and address before treating that mapping as authoritative.
+- All four aliases currently use `ansible_host: 43.157.247.221` and `ansible_user: deploy`. The staging aliases use `bootstrap_host_id: buz-stg-1`; the production aliases use `bootstrap_host_id: buz-prod-1`. The shared address alone does not verify whether these IDs refer to one VPS.
+- Earlier feedback records one active Sumopod VPS, `buz-prod-1`, as a temporary mapping for all four aliases. Verify the live provider topology and address before treating that mapping as authoritative.
 - The proposed route FQDNs are listed in Section 8. A separate `bootstrap_fqdn` is not required unless a host-level DNS/TLS check is selected.
-- `validate` must report missing fields and address/host-identity collisions. `apply` must fail until each target has a verified address, host identity, bootstrap username, and environment. If staging and production aliases resolve to one physical VPS, require explicit shared-host approval and one effective GitHub Environment approval/credential policy; do not describe the aliases as host-isolated.
+- `validate` must report missing fields and address/host-identity collisions. `apply` must fail until each target has a verified address, host identity, bootstrap username, and environment. Multiple app aliases may share a physical VPS if they use one verified host ID and one effective bootstrap Environment. If that VPS has production aliases, use the Production Environment; keep app groups separate for route selection. The workflow allows consistent shared-host aliases without a separate approval variable after preflight validates their address, host ID, and effective bootstrap Environment. Do not describe shared staging and production aliases as host-isolated.
 
 Do not derive a hostname from an alias or IP address. DNS A and any configured AAAA records must be checked against the selected target before TLS or HTTPS validation.
 
@@ -103,7 +104,7 @@ The provider bootstrap account is supplied by Sumopod, is not created or deleted
 | Customer Builder Engine deployment files | Keep `/opt/customerbuilder` and its `compose.yaml` root-owned, with directory mode `0755` and file mode `0644`, matching the existing deployment role. Do not change these deployment-control files to `deploy:deploy`. Runtime data must be owned by the UID/GID of the process or container that writes it. |
 | Outbound Marketing deployment root | No remote deployment workflow currently uses a VPS path. If one is added, `/opt/outbound-marketing` with root-owned control files is a proposed default, not a path this bootstrap workflow must create now. |
 | Nginx and SSH configuration | Nginx is a container. Use `/opt/buzilion/nginx` as the root-owned host configuration directory (mode `0750`); keep configuration files root-owned, mode `0644`, and mounted read-only. If a secret file is needed, keep it `root:root` mode `0600`. Use `/etc/ssh/sshd_config.d/00-buzilion-hardening.conf` for the managed SSH drop-in, owned by root with mode `0644`; validate it with `sshd -t` before activation. |
-| PostgreSQL data | Customer Builder Engine currently uses external Supabase and has no VPS PostgreSQL data path. For Outbound Marketing, prefer the persistent named volume `outbound_postgres_data` mounted at the data directory required by the approved image. If using a bind mount, use `/var/lib/buzilion/outbound-marketing/postgres`, mode `0700`, and the numeric UID/GID required by that exact image. Never assign database files to `deploy`. |
+| PostgreSQL data | PostgreSQL is available to any inventory with a valid service profile; do not restrict it by application name. Customer Builder Engine currently uses external Supabase, but its inventory can select PostgreSQL when desired. Use an application-specific persistent named volume mounted at the data directory required by the approved image. Preserve existing persistent identifiers for already-managed databases. Never assign database files to `deploy`. |
 | Other persistent service paths | Give each selected service a persistent volume or explicit host path and set its ownership to the UID/GID required by that service's approved image. Do not create paths for unselected services. |
 
 The workflow must verify `deploy`'s new key-based SSH session and required sudo access before excluding the provider bootstrap username from the SSH allowlist. It must also verify the expected groups, directory ownership, and file modes.
@@ -211,14 +212,14 @@ When selected:
 
 ### 7.3 PostgreSQL (optional)
 
-PostgreSQL is an optional VPS service for Outbound Marketing. Customer Builder Engine currently uses external Supabase and does not require a VPS PostgreSQL instance. Do not install PostgreSQL for that application unless a separately reviewed requirement changes.
+PostgreSQL is an optional VPS service for any inventory. The bootstrap must not allowlist applications for PostgreSQL. An inventory must provide its PostgreSQL network and off-host backup profile before the service can be selected. Customer Builder Engine currently uses external Supabase, but this is an application choice rather than a bootstrap restriction.
 
-When selected for Outbound Marketing:
+When selected:
 
 - Run PostgreSQL as a container on the VPS. Docker is a required dependency.
-- Use the persistent `outbound_postgres_data` named volume by default. Keep database files outside the container's writable layer and preserve them across restarts and container replacement. If a bind mount is approved instead, use the path and image-specific ownership in Section 4.
+- Use a persistent named volume configured for the selected inventory. Keep database files outside the container's writable layer and preserve them across restarts and container replacement. Retain existing container, project, volume, and file identities for a previously managed database.
 - Do not publish PostgreSQL to the public network. Permit access only from explicitly approved local/container networks.
-- Use `outbound_marketing` as the database and database user, matching the current local-development configuration. Store non-secret names in approved environment configuration and the password only in a protected GitHub Environment secret named `OUTBOUND_MARKETING_DB_PASSWORD`; never commit credentials or expose them in logs.
+- Derive database and user names from the inventory application key unless the inventory explicitly configures different safe identifiers. Store the database password only in the protected Environment secret `<APP>_DB_PASSWORD`, where `<APP>` is the upper-case inventory filename stem with hyphens replaced by underscores; never commit credentials or expose them in logs.
 - Pin an approved image version and immutable digest before `apply`. The local `postgres:18.6` image is a candidate only, not an approved VPS version.
 - Define and verify a health check (for example, `pg_isready`) and the data-directory ownership required by the pinned image.
 - Never remove the data volume as part of bootstrap. Configure and validate the off-host backup and restore requirements in Section 9 before reporting PostgreSQL as recovery-ready.
@@ -270,14 +271,9 @@ For each enabled route, verify the HTTPS health endpoint returns the expected he
 
 When PostgreSQL is selected:
 
-- Store backups off-host in Cloudeka's S3-compatible storage using:
-  - **Endpoint:** `https://kencana.basic.box.cloudeka.id`
-  - **Region:** `kencana`
-  - **Bucket:** `buz-stg-prod-1-lb4jef`
-  - **Access key ID:** GitHub Environment variable `BUZ_STG_PROD_1_ID`
-  - **Secret access key:** protected GitHub Environment secret `BUZ_STG_PROD_1_SECRET`
-- Use the prefix `bootstrap/<environment>/<bootstrap_host_id>/postgresql/` so each environment and physical VPS has a non-overlapping location. Do not use one alias-specific prefix for aliases that share a physical VPS.
-- Run backups on a schedule independent of GitHub Actions, frequently enough to meet **RPO <= 12 hours**. Report or fail validation when the last successful backup is older than 12 hours.
+- Store backups off-host using the bucket, HTTPS endpoint, and region configured by the selected inventory. Store per-application writer and restore credentials in its protected GitHub Environment: `<APP>_POSTGRESQL_S3_ACCESS_KEY_ID`, `<APP>_POSTGRESQL_S3_SECRET_ACCESS_KEY`, `<APP>_POSTGRESQL_S3_RESTORE_ACCESS_KEY_ID`, and `<APP>_POSTGRESQL_S3_RESTORE_SECRET_ACCESS_KEY`.
+- Use an application-scoped prefix by default (`bootstrap/<application>/<application_environment>/<bootstrap_host_id>/postgresql/`) so databases on a shared physical VPS cannot collide. Preserve an existing configured prefix for already-managed databases.
+- Run backups on a schedule independent of GitHub Actions, frequently enough to meet the inventory's configured recovery window. The current inventories use **RPO <= 12 hours** and hourly backups. Report or fail validation when the last successful backup is older than the configured window.
 - Retain seven days of current backups. Scope lifecycle rules to the approved prefix; expire current objects after seven days, expire noncurrent versions seven days after they become noncurrent, and abort incomplete multipart uploads after one day. Verify the provider's lifecycle-age semantics preserve the required restorable window.
 - Require encryption in transit and at rest. Use provider-managed AES-256 or managed KMS server-side encryption where supported and verify it applies to new and existing objects. If server-side encryption is unavailable, encrypt backups client-side with a separately managed, recoverable key before upload; document key ownership and recovery.
 - Enable bucket versioning and restrict its suspension or disablement to bucket administrators. Test recovery of an overwritten or deleted object.
@@ -285,9 +281,9 @@ When PostgreSQL is selected:
 - Store credentials only in protected GitHub Environment configuration and any required root-owned host file; host-side credential files must have restrictive permissions and never appear in logs. Rotate/revoke credentials through the approved process.
 - During initial setup, create and upload a backup, then restore it into an isolated test database before reporting PostgreSQL as recovery-ready. Never overwrite production data during a restore test. Perform and record a restore drill at least quarterly to demonstrate the **RTO <= 4 hours** objective; the backup schedule itself must continue when GitHub Actions is unavailable.
 - Record the time and result of each backup and restore test, and surface failures to the operator.
-- Use `outbound_marketing` as the database and database user, matching the current local-development configuration. Store the password in the protected Environment secret `OUTBOUND_MARKETING_DB_PASSWORD`; do not include secret values in this document.
+- Store the backup-policy attestation in the app-scoped Environment variable `<APP>_POSTGRESQL_BACKUP_POLICY_VERIFIED=true` after validating the selected inventory's storage and recovery policy. Do not include secret values in this document.
 
-The names `BUZ_STG_PROD_1_ID` and `BUZ_STG_PROD_1_SECRET` are the supplied credential names, not proof that the credentials are isolated or least-privilege. Verify the actual permissions and storage capabilities before enabling PostgreSQL `apply`. Do not enable PostgreSQL `apply` until encryption, versioning, lifecycle, credential scope, the prefix, and the initial isolated restore are verified.
+Verify the actual permissions and storage capabilities before enabling PostgreSQL `apply`. Do not enable PostgreSQL `apply` until encryption, versioning, lifecycle, credential scope, the prefix, and the initial isolated restore are verified.
 
 ## 10. Package updates and reboot handling
 

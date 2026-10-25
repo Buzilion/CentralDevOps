@@ -6,13 +6,13 @@ services:
     user: "0:0"
     restart: unless-stopped
     environment:
-      POSTGRES_DB: outbound_marketing
-      POSTGRES_USER: outbound_marketing
-      POSTGRES_PASSWORD_FILE: /run/secrets/outbound_marketing_db_password
+      POSTGRES_DB: "{{ bootstrap_postgresql_database_name }}"
+      POSTGRES_USER: "{{ bootstrap_postgresql_database_user }}"
+      POSTGRES_PASSWORD_FILE: /run/secrets/{{ bootstrap_postgresql_compose_secret_name }}
       PGDATA: "{{ bootstrap_postgresql_data_directory }}"
     secrets:
-      - source: outbound_marketing_db_password
-        target: outbound_marketing_db_password
+      - source: "{{ bootstrap_postgresql_compose_secret_name }}"
+        target: "{{ bootstrap_postgresql_compose_secret_name }}"
     volumes:
       - "{{ bootstrap_postgresql_volume_name }}:{{ bootstrap_postgresql_data_directory }}"
     networks:
@@ -36,5 +36,5 @@ networks:
     external: true
 
 secrets:
-  outbound_marketing_db_password:
+  "{{ bootstrap_postgresql_compose_secret_name }}":
     file: "{{ bootstrap_postgresql_config_directory }}/db_password"

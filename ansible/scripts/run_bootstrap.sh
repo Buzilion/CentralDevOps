@@ -86,6 +86,7 @@ require_value BOOTSTRAP_TARGET_HOST
 require_value BOOTSTRAP_USER
 require_value ANSIBLE_HOST
 require_value BOOTSTRAP_HOST_ID
+require_value BOOTSTRAP_APPLICATION_ENVIRONMENT
 require_value BOOTSTRAP_KNOWN_HOSTS
 require_value DEPLOY_PRIVATE_KEY
 require_value DEPLOY_PUBLIC_KEY
@@ -132,13 +133,17 @@ if has_service postgresql; then
     || "$BOOTSTRAP_POSTGRES_DATA_DIRECTORY" == *".."* ]]; then
     error "BOOTSTRAP_POSTGRES_DATA_DIRECTORY must be a safe absolute path approved for the pinned image."
   fi
-  require_value OUTBOUND_MARKETING_DB_PASSWORD
-  require_single_line OUTBOUND_MARKETING_DB_PASSWORD
-  require_value BUZ_STG_PROD_1_ID
-  require_value BUZ_STG_PROD_1_SECRET
-  require_value BUZ_STG_PROD_1_RESTORE_ID
-  require_value BUZ_STG_PROD_1_RESTORE_SECRET
-  for name in BUZ_STG_PROD_1_ID BUZ_STG_PROD_1_SECRET BUZ_STG_PROD_1_RESTORE_ID BUZ_STG_PROD_1_RESTORE_SECRET; do
+  require_value BOOTSTRAP_POSTGRESQL_DB_PASSWORD
+  require_single_line BOOTSTRAP_POSTGRESQL_DB_PASSWORD
+  require_value BOOTSTRAP_POSTGRESQL_S3_ACCESS_KEY_ID
+  require_value BOOTSTRAP_POSTGRESQL_S3_SECRET_ACCESS_KEY
+  require_value BOOTSTRAP_POSTGRESQL_S3_RESTORE_ACCESS_KEY_ID
+  require_value BOOTSTRAP_POSTGRESQL_S3_RESTORE_SECRET_ACCESS_KEY
+  for name in \
+    BOOTSTRAP_POSTGRESQL_S3_ACCESS_KEY_ID \
+    BOOTSTRAP_POSTGRESQL_S3_SECRET_ACCESS_KEY \
+    BOOTSTRAP_POSTGRESQL_S3_RESTORE_ACCESS_KEY_ID \
+    BOOTSTRAP_POSTGRESQL_S3_RESTORE_SECRET_ACCESS_KEY; do
     require_single_line "$name"
     if [[ ! "${!name}" =~ ^[A-Za-z0-9+/=_-]+$ ]]; then
       error "$name contains unsupported characters for the protected AWS environment file."
@@ -315,6 +320,13 @@ import sys
 def boolean(name):
     return os.environ.get(name, "").strip().lower() == "true"
 
+requested_services = [
+    service
+    for service in os.environ.get("BOOTSTRAP_REQUESTED_SERVICES", "").split(",")
+    if service
+]
+postgresql_selected = "postgresql" in requested_services
+
 variables = {
     "bootstrap_mode": os.environ["BOOTSTRAP_MODE"],
     "bootstrap_inventory": os.environ["BOOTSTRAP_INVENTORY"],
@@ -326,13 +338,10 @@ variables = {
     "bootstrap_deploy_ssh_common_args": os.environ["DEPLOY_SSH_COMMON_ARGS"],
     "bootstrap_host_id": os.environ["BOOTSTRAP_HOST_ID"],
     "bootstrap_environment": os.environ["BOOTSTRAP_ENVIRONMENT"],
+    "bootstrap_application_environment": os.environ["BOOTSTRAP_APPLICATION_ENVIRONMENT"],
     "bootstrap_application": os.environ["BOOTSTRAP_APPLICATION"],
     "bootstrap_route_fqdn": os.environ.get("BOOTSTRAP_ROUTE_FQDN", ""),
-    "bootstrap_requested_services": [
-        service
-        for service in os.environ.get("BOOTSTRAP_REQUESTED_SERVICES", "").split(",")
-        if service
-    ],
+    "bootstrap_requested_services": requested_services,
     "bootstrap_effective_services": json.loads(
         os.environ["BOOTSTRAP_EFFECTIVE_SERVICES_JSON"]
     ),
@@ -371,19 +380,35 @@ variables = {
         "BOOTSTRAP_POSTGRES_DATA_DIRECTORY", ""
     ),
     "bootstrap_postgresql_db_password": os.environ.get(
-        "OUTBOUND_MARKETING_DB_PASSWORD", ""
-    ),
-    "bootstrap_s3_access_key_id": os.environ.get("BUZ_STG_PROD_1_ID", ""),
-    "bootstrap_s3_secret_access_key": os.environ.get("BUZ_STG_PROD_1_SECRET", ""),
+        "BOOTSTRAP_POSTGRESQL_DB_PASSWORD", ""
+    )
+    if postgresql_selected
+    else "",
+    "bootstrap_s3_access_key_id": os.environ.get(
+        "BOOTSTRAP_POSTGRESQL_S3_ACCESS_KEY_ID", ""
+    )
+    if postgresql_selected
+    else "",
+    "bootstrap_s3_secret_access_key": os.environ.get(
+        "BOOTSTRAP_POSTGRESQL_S3_SECRET_ACCESS_KEY", ""
+    )
+    if postgresql_selected
+    else "",
     "bootstrap_s3_restore_access_key_id": os.environ.get(
-        "BUZ_STG_PROD_1_RESTORE_ID", ""
-    ),
+        "BOOTSTRAP_POSTGRESQL_S3_RESTORE_ACCESS_KEY_ID", ""
+    )
+    if postgresql_selected
+    else "",
     "bootstrap_s3_restore_secret_access_key": os.environ.get(
-        "BUZ_STG_PROD_1_RESTORE_SECRET", ""
-    ),
+        "BOOTSTRAP_POSTGRESQL_S3_RESTORE_SECRET_ACCESS_KEY", ""
+    )
+    if postgresql_selected
+    else "",
     "bootstrap_postgres_backup_policy_verified": boolean(
         "BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED"
-    ),
+    )
+    if postgresql_selected
+    else False,
     "bootstrap_alloy_package_version": os.environ.get(
         "BOOTSTRAP_ALLOY_PACKAGE_VERSION", ""
     ),

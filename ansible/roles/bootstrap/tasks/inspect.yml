@@ -534,13 +534,19 @@
         {{
           (
             'not selected; existing container present'
-            if 'outbound-postgres' in (bootstrap_docker_containers.stdout | default(''))
+            if (
+              bootstrap_postgresql_container_name
+              | default(bootstrap_application ~ '-postgres')
+            ) in (bootstrap_docker_containers.stdout | default(''))
             else 'not selected'
           )
           if 'postgresql' not in bootstrap_effective_services
           else (
             'present; inspect image, volume, backup, and health'
-            if 'outbound-postgres' in (bootstrap_docker_containers.stdout | default(''))
+            if (
+              bootstrap_postgresql_container_name
+              | default(bootstrap_application ~ '-postgres')
+            ) in (bootstrap_docker_containers.stdout | default(''))
             else 'absent; apply would install'
           )
         }}

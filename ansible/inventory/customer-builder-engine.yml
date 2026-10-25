@@ -1,4 +1,11 @@
 customer-builder-engine:
+  vars:
+    bootstrap_postgresql_network_name: cbe-backend
+    bootstrap_postgresql_bucket: buz-stg-prod-1-lb4jef
+    bootstrap_postgresql_s3_endpoint: https://kencana.basic.box.cloudeka.id
+    bootstrap_postgresql_s3_region: kencana
+    bootstrap_postgresql_backup_interval: hourly
+    bootstrap_postgresql_backup_max_age_seconds: 43200
   children:
     staging:
       hosts:

@@ -11,8 +11,10 @@
       - bootstrap_connection_mode in ['password', 'deploy-key']
       - bootstrap_connection_mode != 'password' or bootstrap_connection_user == bootstrap_user
       - bootstrap_connection_mode != 'deploy-key' or bootstrap_connection_user == bootstrap_deploy_user
+      - bootstrap_application_environment in ['staging', 'production']
       - bootstrap_environment in ['staging', 'production']
-      - bootstrap_application in ['customer-builder-engine', 'outbound-marketing']
+      - bootstrap_application is match('^[a-z0-9]+(?:-[a-z0-9]+)*$')
+      - bootstrap_application == (bootstrap_inventory | basename | regex_replace('\.ya?ml$', ''))
       - bootstrap_effective_services is sequence
       - bootstrap_requested_services is sequence
       - bootstrap_report_path is string
@@ -25,7 +27,6 @@
       - bootstrap_known_hosts_file | length > 0
       - "'nginx' not in bootstrap_effective_services or 'docker' in bootstrap_effective_services"
       - "'postgresql' not in bootstrap_effective_services or 'docker' in bootstrap_effective_services"
-      - "'postgresql' not in bootstrap_requested_services or bootstrap_application == 'outbound-marketing'"
     fail_msg: The selected host or bootstrap configuration does not satisfy the inventory contract.
 
 - name: Validate apply-only manual safety gates
@@ -53,7 +54,7 @@
     that:
       - bootstrap_nginx_image is match('^.+@sha256:[0-9a-f]{64}$')
       - bootstrap_certbot_image is match('^.+@sha256:[0-9a-f]{64}$')
-      - bootstrap_route_fqdn == bootstrap_routes[bootstrap_application][bootstrap_environment].fqdn
+      - bootstrap_route_fqdn == bootstrap_routes[bootstrap_application][bootstrap_application_environment].fqdn
     fail_msg: Nginx requires approved immutable images and the inventory's explicit route.
   when: "'nginx' in bootstrap_effective_services"
 
@@ -63,6 +64,12 @@
       - bootstrap_postgres_image is match('^.+@sha256:[0-9a-f]{64}$')
       - bootstrap_aws_cli_image is match('^.+@sha256:[0-9a-f]{64}$')
       - bootstrap_postgresql_db_password | length > 0
+      - bootstrap_postgresql_network_name | default('') is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_bucket | default('') is match('^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')
+      - bootstrap_postgresql_s3_endpoint | default('') is match('^https://[A-Za-z0-9._~:/?=&%+-]+$')
+      - bootstrap_postgresql_s3_region | default('') is match('^[A-Za-z0-9][A-Za-z0-9-]*$')
+      - bootstrap_postgresql_backup_interval | default('') | length > 0
+      - bootstrap_postgresql_backup_max_age_seconds | default(0) | int > 0
       - bootstrap_s3_access_key_id | length > 0
       - bootstrap_s3_secret_access_key | length > 0
       - bootstrap_s3_restore_access_key_id | length > 0
@@ -92,5 +99,5 @@
 
 - name: Resolve the route configuration for this host
   ansible.builtin.set_fact:
-    bootstrap_route: "{{ bootstrap_routes[bootstrap_application][bootstrap_environment] }}"
+    bootstrap_route: "{{ bootstrap_routes[bootstrap_application][bootstrap_application_environment] }}"
   when: "'nginx' in bootstrap_effective_services"

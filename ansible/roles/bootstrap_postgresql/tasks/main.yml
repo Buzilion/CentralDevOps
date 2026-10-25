@@ -2,11 +2,32 @@
 - name: Require verified PostgreSQL recovery prerequisites and exact image
   ansible.builtin.assert:
     that:
-      - bootstrap_application == 'outbound-marketing'
       - bootstrap_postgres_image is match('^.+@sha256:[0-9a-f]{64}$')
       - bootstrap_aws_cli_image is match('^.+@sha256:[0-9a-f]{64}$')
       - bootstrap_postgresql_data_directory is match('^/[A-Za-z0-9._/-]+$')
       - "'..' not in bootstrap_postgresql_data_directory.split('/')"
+      - bootstrap_postgresql_network_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_database_name is match('^[a-z_][a-z0-9_]{0,62}$')
+      - bootstrap_postgresql_database_user is match('^[a-z_][a-z0-9_]{0,62}$')
+      - bootstrap_postgresql_compose_secret_name is match('^[A-Za-z0-9_-]+$')
+      - bootstrap_postgresql_container_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_compose_project_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_volume_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_backup_id is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+      - bootstrap_postgresql_backup_namespace == '' or bootstrap_postgresql_backup_namespace is match('^[a-z0-9]+(?:-[a-z0-9]+)*$')
+      - bootstrap_postgresql_bucket is match('^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')
+      - bootstrap_postgresql_s3_endpoint is match('^https://[A-Za-z0-9._~:/?=&%+-]+$')
+      - bootstrap_postgresql_s3_region is match('^[A-Za-z0-9][A-Za-z0-9-]*$')
+      - bootstrap_postgresql_backup_interval is match('^[A-Za-z0-9*.,/: _-]+$')
+      - bootstrap_postgresql_backup_max_age_seconds | int > 0
+      - bootstrap_postgresql_directory is match('^/[A-Za-z0-9._/-]+$')
+      - "'..' not in bootstrap_postgresql_directory.split('/')"
+      - bootstrap_postgresql_config_directory is match('^/[A-Za-z0-9._/-]+$')
+      - "'..' not in bootstrap_postgresql_config_directory.split('/')"
+      - bootstrap_postgresql_state_directory is match('^/[A-Za-z0-9._/-]+$')
+      - "'..' not in bootstrap_postgresql_state_directory.split('/')"
+      - bootstrap_postgresql_compose_file is match('^/[A-Za-z0-9._/-]+$')
+      - "'..' not in bootstrap_postgresql_compose_file.split('/')"
       - bootstrap_postgres_backup_policy_verified | bool
       - bootstrap_postgresql_db_password | length > 0
       - bootstrap_s3_access_key_id | length > 0
@@ -44,9 +65,9 @@
   ansible.builtin.stat:
     path: "{{ item }}"
   loop:
-    - /usr/local/sbin/buzilion-outbound-postgresql-backup
-    - /etc/systemd/system/buzilion-outbound-postgresql-backup.service
-    - /etc/systemd/system/buzilion-outbound-postgresql-backup.timer
+    - "{{ bootstrap_postgresql_backup_script_path }}"
+    - "{{ bootstrap_postgresql_backup_service_file }}"
+    - "{{ bootstrap_postgresql_backup_timer_file }}"
   register: bootstrap_postgresql_backup_files_before
 
 - name: Refuse symbolic links at managed backup paths
@@ -297,7 +318,7 @@
       - /usr/bin/docker
       - compose
       - --project-name
-      - buzilion-outbound-postgresql
+      - "{{ bootstrap_postgresql_compose_project_name }}"
       - --file
       - "{{ bootstrap_postgresql_compose_file }}"
       - up
@@ -322,7 +343,7 @@
 - name: Install the root-owned off-host backup script
   ansible.builtin.template:
     src: backup.sh.j2
-    dest: /usr/local/sbin/buzilion-outbound-postgresql-backup
+    dest: "{{ bootstrap_postgresql_backup_script_path }}"
     owner: root
     group: root
     mode: "0750"
@@ -330,7 +351,7 @@
 - name: Install PostgreSQL backup service unit
   ansible.builtin.template:
     src: backup.service.j2
-    dest: /etc/systemd/system/buzilion-outbound-postgresql-backup.service
+    dest: "{{ bootstrap_postgresql_backup_service_file }}"
     owner: root
     group: root
     mode: "0644"
@@ -340,7 +361,7 @@
 - name: Install PostgreSQL backup timer unit
   ansible.builtin.template:
     src: backup.timer.j2
-    dest: /etc/systemd/system/buzilion-outbound-postgresql-backup.timer
+    dest: "{{ bootstrap_postgresql_backup_timer_file }}"
     owner: root
     group: root
     mode: "0644"
@@ -355,7 +376,7 @@
 - name: Upload and restore an initial backup into an isolated test database
   ansible.builtin.command:
     argv:
-      - /usr/local/sbin/buzilion-outbound-postgresql-backup
+      - "{{ bootstrap_postgresql_backup_script_path }}"
       - --initial-restore-test
   register: bootstrap_postgresql_initial_backup_result
   changed_when: true
@@ -364,7 +385,7 @@
 
 - name: Enable the scheduled off-host backup
   ansible.builtin.systemd:
-    name: buzilion-outbound-postgresql-backup.timer
+    name: "{{ bootstrap_postgresql_backup_id }}.timer"
     daemon_reload: true
     enabled: true
     state: started
@@ -383,9 +404,9 @@
       - >-
         (ansible_date_time.epoch | int)
         - (bootstrap_postgresql_last_backup_after_apply.stdout.split() | first | default('0') | int)
-        <= 43200
+        <= (bootstrap_postgresql_backup_max_age_seconds | int)
       - bootstrap_postgresql_last_backup_after_apply.stdout.split() | length == 2
-    fail_msg: PostgreSQL's last successful backup is older than the 12-hour RPO.
+    fail_msg: PostgreSQL's last successful backup is older than its configured recovery window.
 
 - name: Record PostgreSQL recovery status
   ansible.builtin.set_fact:
