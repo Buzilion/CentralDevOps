@@ -1,0 +1,91 @@
+---
+- name: Parse every bootstrap role task without executing it
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Parse bootstrap validation tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: validate
+      when: false
+
+    - name: Parse bootstrap inspection tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: inspect
+      when: false
+
+    - name: Parse bootstrap baseline tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: base
+      when: false
+
+    - name: Parse bootstrap deploy-account tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: deploy-account
+      when: false
+
+    - name: Parse bootstrap deploy-key verification tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: verify-deploy-access
+      when: false
+
+    - name: Parse bootstrap deploy-key lock tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: lock-deploy-keys
+      when: false
+
+    - name: Parse bootstrap firewall tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: firewall
+      when: false
+
+    - name: Parse bootstrap SSH hardening tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: ssh
+      when: false
+
+    - name: Parse bootstrap health tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: health
+      when: false
+
+    - name: Parse bootstrap report tasks
+      ansible.builtin.import_role:
+        name: bootstrap
+        tasks_from: report
+      when: false
+
+    - name: Parse Docker role tasks
+      ansible.builtin.import_role:
+        name: bootstrap_docker
+      when: false
+
+    - name: Parse Nginx role tasks
+      ansible.builtin.import_role:
+        name: bootstrap_nginx
+      when: false
+
+    - name: Parse PostgreSQL inspection tasks
+      ansible.builtin.import_role:
+        name: bootstrap_postgresql
+        tasks_from: inspect
+      when: false
+
+    - name: Parse PostgreSQL apply tasks
+      ansible.builtin.import_role:
+        name: bootstrap_postgresql
+      when: false
+
+    - name: Parse Alloy role tasks
+      ansible.builtin.import_role:
+        name: bootstrap_alloy
+      when: false

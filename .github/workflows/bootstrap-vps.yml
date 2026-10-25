@@ -1,249 +1,289 @@
-name: Bootstrap VPS Hosts
+name: Bootstrap VPS
 
 on:
   workflow_dispatch:
     inputs:
-      target_hosts:
-        description: "Comma-separated Ansible host aliases, for example buz-dev-1,buz-prod-1"
+      inventory:
+        description: Approved Ansible inventory
+        required: true
+        type: choice
+        options:
+          - ansible/inventory/customer-builder-engine.yml
+          - ansible/inventory/outbound-marketing.yml
+      target_host:
+        description: One exact host alias from the selected inventory
         required: true
         type: string
       execution_mode:
-        description: "Run local validation, remote check mode, or apply changes"
+        description: Validate without changes, or apply the bootstrap
         required: true
         type: choice
-        default: syntax
+        default: validate
         options:
-          - syntax
-          - check
+          - validate
           - apply
+      service_docker:
+        description: Select Docker Engine and Compose
+        required: true
+        type: boolean
+        default: false
+      service_nginx:
+        description: Select containerized Nginx and TLS (also selects Docker)
+        required: true
+        type: boolean
+        default: false
+      service_postgresql:
+        description: Select Outbound Marketing PostgreSQL (also selects Docker)
+        required: true
+        type: boolean
+        default: false
+      service_alloy:
+        description: Select Grafana Cloud Alloy
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   preflight:
-    name: Validate Ansible inventory and targets
+    name: Validate one target and the playbook
     runs-on: ubuntu-latest
     outputs:
-      bootstrap_matrix: ${{ steps.select-hosts.outputs.bootstrap_matrix }}
+      inventory: ${{ steps.validate.outputs.bootstrap_inventory }}
+      target_host: ${{ steps.validate.outputs.bootstrap_target_host }}
+      mode: ${{ steps.validate.outputs.bootstrap_mode }}
+      bootstrap_user: ${{ steps.validate.outputs.bootstrap_user }}
+      ansible_host: ${{ steps.validate.outputs.ansible_host }}
+      host_id: ${{ steps.validate.outputs.bootstrap_host_id }}
+      host_id_normalized: ${{ steps.validate.outputs.bootstrap_host_id_normalized }}
+      environment: ${{ steps.validate.outputs.bootstrap_environment }}
+      github_environment: ${{ steps.validate.outputs.github_environment }}
+      application: ${{ steps.validate.outputs.bootstrap_application }}
+      requested_services: ${{ steps.validate.outputs.bootstrap_requested_services }}
+      effective_services: ${{ steps.validate.outputs.bootstrap_effective_services }}
+      requested_services_json: ${{ steps.validate.outputs.bootstrap_requested_services_json }}
+      effective_services_json: ${{ steps.validate.outputs.bootstrap_effective_services_json }}
+      route_fqdn: ${{ steps.validate.outputs.bootstrap_route_fqdn }}
+      shared_host_collision: ${{ steps.validate.outputs.bootstrap_shared_host_collision }}
+      password_secret: ${{ steps.validate.outputs.bootstrap_password_secret }}
+      known_hosts_variable: ${{ steps.validate.outputs.bootstrap_known_hosts_variable }}
+      deploy_public_key_variable: ${{ steps.validate.outputs.deploy_public_key_variable }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
-      - name: Install Ansible
+      - name: Install pinned Ansible dependencies
         run: |
-          python -m pip install ansible-core==2.18.6
-          ansible-galaxy collection install -r ansible/requirements.yml
+          python -m pip install --disable-pip-version-check ansible-core==2.18.6
+          ansible-galaxy collection install --requirements-file ansible/requirements.yml
 
-      - name: Validate selected inventory hosts
-        id: select-hosts
-        shell: bash
-        env:
-          TARGET_HOSTS: ${{ inputs.target_hosts }}
-        working-directory: ${{ github.workspace }}/ansible
-        run: |
-          set -euo pipefail
-          inventory_json="$RUNNER_TEMP/ansible-inventory.json"
-          trap 'rm -f "$inventory_json"' EXIT
-
-          echo 'bootstrap_matrix={"include":[{"environment":"development","hosts":""}]}' > "$GITHUB_OUTPUT"
-          ansible-inventory -i inventory --list > "$inventory_json"
-          python - "$inventory_json" "$GITHUB_OUTPUT" <<'PY'
-          import json
-          import os
-          import re
-          import sys
-
-          with open(sys.argv[1], encoding="utf-8") as inventory_file:
-              inventory = json.load(inventory_file)
-
-          requested_hosts = [
-              host.strip()
-              for host in os.environ.get("TARGET_HOSTS", "").split(",")
-          ]
-          if not requested_hosts or any(not host for host in requested_hosts):
-              print("::error::Enter one or more comma-separated inventory host aliases.")
-              raise SystemExit(1)
-          if len(requested_hosts) != len(set(requested_hosts)):
-              print("::error::Each inventory host alias may only be selected once.")
-              raise SystemExit(1)
-
-          available_hosts = set(inventory.get("_meta", {}).get("hostvars", {}))
-          if not available_hosts:
-              print("::error::The inventory contains no hosts.")
-              raise SystemExit(1)
-
-          if any(not re.fullmatch(r"[A-Za-z0-9_.-]+", host) for host in requested_hosts):
-              print("::error::Host aliases may contain only letters, numbers, periods, underscores, and hyphens.")
-              raise SystemExit(1)
-
-          if set(requested_hosts) - available_hosts:
-              print("::error::One or more selected aliases are not present in the Ansible inventory.")
-              print("Available aliases: " + ", ".join(sorted(available_hosts)))
-              raise SystemExit(1)
-
-          supported_environments = ("development", "staging", "production")
-          environments_by_host = {}
-          for environment in supported_environments:
-              for host in inventory.get(environment, {}).get("hosts", []):
-                  environments_by_host.setdefault(host, []).append(environment)
-
-          invalid_hosts = [
-              host
-              for host in requested_hosts
-              if len(environments_by_host.get(host, [])) != 1
-          ]
-          if invalid_hosts:
-              print(
-                  "::error::Every selected host must belong to exactly one of "
-                  "development, staging, or production."
-              )
-              raise SystemExit(1)
-
-          matrix = {
-              "include": [
-                  {
-                      "environment": environment,
-                      "hosts": ",".join(
-                          host
-                          for host in requested_hosts
-                          if environment in environments_by_host[host]
-                      ),
-                  }
-                  for environment in supported_environments
-                  if any(
-                      environment in environments_by_host[host]
-                      for host in requested_hosts
-                  )
-              ]
-          }
-          with open(sys.argv[2], "w", encoding="utf-8") as output:
-              output.write(
-                  "bootstrap_matrix="
-                  + json.dumps(matrix, separators=(",", ":"))
-                  + "\n"
-              )
-          print(
-              "Validated target hosts by environment: "
-              + ", ".join(
-                  f"{item['environment']} ({item['hosts']})"
-                  for item in matrix["include"]
-              )
-          )
-          PY
-
-      - name: Check playbook syntax
+      - name: Check Ansible playbook syntax
         env:
           ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
-        working-directory: ${{ github.workspace }}/ansible
         run: |
-          ansible-playbook \
-            --inventory inventory \
-            playbooks/bootstrap.yml \
-            --syntax-check
+          ansible-playbook --inventory ansible/inventory/customer-builder-engine.yml ansible/playbooks/bootstrap.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/customer-builder-engine.yml ansible/playbooks/bootstrap-syntax-check.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/outbound-marketing.yml ansible/playbooks/bootstrap.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/outbound-marketing.yml ansible/playbooks/bootstrap-syntax-check.yml --syntax-check
+
+      - name: Test dispatch and collision validation
+        run: python ansible/tests/test_validate_bootstrap_request.py
+
+      - name: Check bootstrap runner script syntax
+        run: bash -n ansible/scripts/run_bootstrap.sh
+
+      - name: Validate dispatch, inventory, identity, and route DNS
+        id: validate
+        env:
+          BOOTSTRAP_INVENTORY: ${{ inputs.inventory }}
+          BOOTSTRAP_TARGET_HOST: ${{ inputs.target_host }}
+          BOOTSTRAP_EXECUTION_MODE: ${{ inputs.execution_mode }}
+          BOOTSTRAP_SERVICE_DOCKER: ${{ inputs.service_docker }}
+          BOOTSTRAP_SERVICE_NGINX: ${{ inputs.service_nginx }}
+          BOOTSTRAP_SERVICE_POSTGRESQL: ${{ inputs.service_postgresql }}
+          BOOTSTRAP_SERVICE_ALLOY: ${{ inputs.service_alloy }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python ansible/scripts/validate_bootstrap_request.py
 
   bootstrap:
-    name: Bootstrap ${{ matrix.environment }} VPS hosts
+    name: ${{ needs.preflight.outputs.mode }} ${{ needs.preflight.outputs.host_id }}
     needs: preflight
-    if: ${{ inputs.execution_mode != 'syntax' }}
+    if: ${{ needs.preflight.result == 'success' }}
     runs-on: ubuntu-latest
-    environment: ${{ matrix.environment }}
-    strategy:
-      max-parallel: 1
-      matrix: ${{ fromJSON(needs.preflight.outputs.bootstrap_matrix) }}
+    environment:
+      name: ${{ needs.preflight.outputs.github_environment }}
+    concurrency:
+      group: bootstrap-vps-${{ needs.preflight.outputs.host_id }}
+      cancel-in-progress: false
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
 
-      - name: Install Ansible and sshpass
+      - name: Install sshpass for bootstrap password authentication
         run: |
-          python -m pip install ansible-core==2.18.6
-          ansible-galaxy collection install -r ansible/requirements.yml
           sudo apt-get update
           sudo apt-get install --yes sshpass
 
-      - name: Configure SSH
+      - name: Install pinned Ansible dependencies
+        run: |
+          python -m pip install --disable-pip-version-check ansible-core==2.18.6
+          ansible-galaxy collection install --requirements-file ansible/requirements.yml
+
+      - name: Run bootstrap using protected password or deploy-key access
+        id: run-bootstrap
         shell: bash
         env:
-          VPS_USERNAME: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_USERNAME' || matrix.environment == 'staging' && 'STG_VPS_USERNAME' || 'PROD_VPS_USERNAME'] }}
-          VPS_PASSWORD: ${{ secrets[matrix.environment == 'development' && 'DEV_VPS_PASSWORD' || matrix.environment == 'staging' && 'STG_VPS_PASSWORD' || 'PROD_VPS_PASSWORD'] }}
-          VPS_KNOWN_HOSTS: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_KNOWN_HOSTS' || matrix.environment == 'staging' && 'STG_VPS_KNOWN_HOSTS' || 'PROD_VPS_KNOWN_HOSTS'] }}
-          TARGET_ENVIRONMENT: ${{ matrix.environment }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$VPS_USERNAME" ]]; then
-            echo "::error::Set the VPS username variable for the $TARGET_ENVIRONMENT environment."
-            exit 1
-          fi
-          if [[ -z "$VPS_PASSWORD" ]]; then
-            echo "::error::Set the VPS password secret for the $TARGET_ENVIRONMENT environment."
-            exit 1
-          fi
-          if [[ -z "$VPS_KNOWN_HOSTS" ]]; then
-            echo "::error::Set the VPS known hosts variable for the $TARGET_ENVIRONMENT environment."
-            exit 1
-          fi
+          BOOTSTRAP_INVENTORY: ${{ needs.preflight.outputs.inventory }}
+          BOOTSTRAP_TARGET_HOST: ${{ needs.preflight.outputs.target_host }}
+          BOOTSTRAP_MODE: ${{ needs.preflight.outputs.mode }}
+          BOOTSTRAP_USER: ${{ needs.preflight.outputs.bootstrap_user }}
+          ANSIBLE_HOST: ${{ needs.preflight.outputs.ansible_host }}
+          BOOTSTRAP_HOST_ID: ${{ needs.preflight.outputs.host_id }}
+          BOOTSTRAP_HOST_ID_NORMALIZED: ${{ needs.preflight.outputs.host_id_normalized }}
+          BOOTSTRAP_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          GITHUB_ENVIRONMENT: ${{ needs.preflight.outputs.github_environment }}
+          BOOTSTRAP_APPLICATION: ${{ needs.preflight.outputs.application }}
+          BOOTSTRAP_REQUESTED_SERVICES: ${{ needs.preflight.outputs.requested_services }}
+          BOOTSTRAP_EFFECTIVE_SERVICES: ${{ needs.preflight.outputs.effective_services }}
+          BOOTSTRAP_EFFECTIVE_SERVICES_JSON: ${{ needs.preflight.outputs.effective_services_json }}
+          BOOTSTRAP_ROUTE_FQDN: ${{ needs.preflight.outputs.route_fqdn }}
+          BOOTSTRAP_SHARED_HOST_COLLISION: ${{ needs.preflight.outputs.shared_host_collision }}
+          BOOTSTRAP_PASSWORD: ${{ secrets[needs.preflight.outputs.password_secret] }}
+          BOOTSTRAP_KNOWN_HOSTS: ${{ vars[needs.preflight.outputs.known_hosts_variable] }}
+          DEPLOY_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          DEPLOY_PUBLIC_KEY: ${{ vars[needs.preflight.outputs.deploy_public_key_variable] }}
+          SUMOPOD_FIREWALL_REVIEWED: ${{ vars.SUMOPOD_FIREWALL_REVIEWED }}
+          SUMOPOD_SSH_SOURCE_RESTRICTED: ${{ vars.SUMOPOD_SSH_SOURCE_RESTRICTED }}
+          SUMOPOD_PUBLIC_SSH_EXCEPTION_APPROVED: ${{ vars.SUMOPOD_PUBLIC_SSH_EXCEPTION_APPROVED }}
+          BOOTSTRAP_SHARED_HOST_APPROVED: ${{ vars.BOOTSTRAP_SHARED_HOST_APPROVED }}
+          BOOTSTRAP_DOCKER_CE_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_DOCKER_CE_PACKAGE_VERSION }}
+          BOOTSTRAP_DOCKER_CLI_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_DOCKER_CLI_PACKAGE_VERSION }}
+          BOOTSTRAP_CONTAINERD_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_CONTAINERD_PACKAGE_VERSION }}
+          BOOTSTRAP_BUILDX_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_BUILDX_PACKAGE_VERSION }}
+          BOOTSTRAP_COMPOSE_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_COMPOSE_PACKAGE_VERSION }}
+          BOOTSTRAP_NGINX_IMAGE: ${{ vars.BOOTSTRAP_NGINX_IMAGE }}
+          BOOTSTRAP_CERTBOT_IMAGE: ${{ vars.BOOTSTRAP_CERTBOT_IMAGE }}
+          BOOTSTRAP_POSTGRES_IMAGE: ${{ vars.BOOTSTRAP_POSTGRES_IMAGE }}
+          BOOTSTRAP_POSTGRES_DATA_DIRECTORY: ${{ vars.BOOTSTRAP_POSTGRES_DATA_DIRECTORY }}
+          BOOTSTRAP_AWS_CLI_IMAGE: ${{ vars.BOOTSTRAP_AWS_CLI_IMAGE }}
+          OUTBOUND_MARKETING_DB_PASSWORD: ${{ secrets.OUTBOUND_MARKETING_DB_PASSWORD }}
+          BUZ_STG_PROD_1_ID: ${{ vars.BUZ_STG_PROD_1_ID }}
+          BUZ_STG_PROD_1_SECRET: ${{ secrets.BUZ_STG_PROD_1_SECRET }}
+          BUZ_STG_PROD_1_RESTORE_ID: ${{ vars.BUZ_STG_PROD_1_RESTORE_ID }}
+          BUZ_STG_PROD_1_RESTORE_SECRET: ${{ secrets.BUZ_STG_PROD_1_RESTORE_SECRET }}
+          BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED: ${{ vars.BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED }}
+          BOOTSTRAP_ALLOY_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_ALLOY_PACKAGE_VERSION }}
+          BOOTSTRAP_ALLOY_DELIVERY_VERIFIED: ${{ vars.BOOTSTRAP_ALLOY_DELIVERY_VERIFIED }}
+          GRAFANA_PROMETHEUS_URL: ${{ vars[format('{0}_GRAFANA_CLOUD_PROMETHEUS_URL', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_PROMETHEUS_USER: ${{ vars[format('{0}_GRAFANA_CLOUD_PROMETHEUS_USER', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_LOKI_URL: ${{ vars[format('{0}_GRAFANA_CLOUD_LOKI_URL', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_LOKI_USER: ${{ vars[format('{0}_GRAFANA_CLOUD_LOKI_USER', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_TEMPO_URL: ${{ vars[format('{0}_GRAFANA_CLOUD_TEMPO_URL', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_TEMPO_USER: ${{ vars[format('{0}_GRAFANA_CLOUD_TEMPO_USER', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_OTLP_ENDPOINT: ${{ vars[format('{0}_GRAFANA_CLOUD_OTLP_ENDPOINT', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_INSTANCE_ID: ${{ vars[format('{0}_GRAFANA_CLOUD_INSTANCE_ID', needs.preflight.outputs.host_id_normalized)] }}
+          GRAFANA_API_TOKEN: ${{ secrets[format('{0}_GRAFANA_CLOUD_API_TOKEN', needs.preflight.outputs.host_id_normalized)] }}
+        run: bash ansible/scripts/run_bootstrap.sh
 
-          install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
-
-      - name: Run Ansible
+      - name: Write non-secret run summary
+        if: always()
         shell: bash
         env:
-          ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
-          ANSIBLE_HOST_KEY_CHECKING: "True"
-          EXECUTION_MODE: ${{ inputs.execution_mode }}
-          TARGET_HOSTS: ${{ matrix.hosts }}
-          TARGET_ENVIRONMENT: ${{ matrix.environment }}
-          VPS_USERNAME: ${{ vars[matrix.environment == 'development' && 'DEV_VPS_USERNAME' || matrix.environment == 'staging' && 'STG_VPS_USERNAME' || 'PROD_VPS_USERNAME'] }}
-          VPS_PASSWORD: ${{ secrets[matrix.environment == 'development' && 'DEV_VPS_PASSWORD' || matrix.environment == 'staging' && 'STG_VPS_PASSWORD' || 'PROD_VPS_PASSWORD'] }}
-          VPS_SSH_PUBLIC_KEY: ${{ vars[matrix.environment == 'development' && 'DEV_SSH_PUBLIC_KEY' || matrix.environment == 'staging' && 'STG_SSH_PUBLIC_KEY' || 'PROD_SSH_PUBLIC_KEY'] }}
-        working-directory: ${{ github.workspace }}/ansible
+          BOOTSTRAP_MODE: ${{ needs.preflight.outputs.mode }}
+          BOOTSTRAP_INVENTORY: ${{ needs.preflight.outputs.inventory }}
+          BOOTSTRAP_TARGET_HOST: ${{ needs.preflight.outputs.target_host }}
+          BOOTSTRAP_HOST_ID: ${{ needs.preflight.outputs.host_id }}
+          BOOTSTRAP_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          BOOTSTRAP_REQUESTED_SERVICES: ${{ needs.preflight.outputs.requested_services }}
+          BOOTSTRAP_EFFECTIVE_SERVICES: ${{ needs.preflight.outputs.effective_services }}
+          BOOTSTRAP_ROUTE_FQDN: ${{ needs.preflight.outputs.route_fqdn }}
+          BOOTSTRAP_RUN_OUTCOME: ${{ steps.run-bootstrap.outcome }}
+          BOOTSTRAP_PENDING_REBOOT: ${{ steps.run-bootstrap.outputs.pending_reboot }}
         run: |
-          set -euo pipefail
-          if [[ -z "$VPS_SSH_PUBLIC_KEY" ]]; then
-            echo "::error::Set the SSH public key environment variable for the $TARGET_ENVIRONMENT environment."
-            exit 1
-          fi
-
-          inventory="inventory"
-          credentials_file="$(mktemp)"
-          trap 'rm -f "$credentials_file"' EXIT
-          python - "$credentials_file" <<'PY'
+          python - "$RUNNER_TEMP/bootstrap-report.json" "$GITHUB_STEP_SUMMARY" <<'PY'
           import json
           import os
           import sys
 
-          with open(sys.argv[1], "w", encoding="utf-8") as credentials:
-              json.dump(
-                  {
-                      "ansible_user": os.environ["VPS_USERNAME"],
-                      "ansible_password": os.environ["VPS_PASSWORD"],
-                      "ssh_public_key": os.environ["VPS_SSH_PUBLIC_KEY"],
-                  },
-                  credentials,
+          report_path, summary_path = sys.argv[1:]
+          report = {}
+          try:
+              with open(report_path, encoding="utf-8") as source:
+                  report = json.load(source)
+          except FileNotFoundError:
+              pass
+
+          outcome = os.environ.get("BOOTSTRAP_RUN_OUTCOME") or "not completed"
+          status = report.get("status", "unknown") if report else (
+              "failed" if outcome == "failure" else "report missing"
+          )
+          if outcome == "failure":
+              status = "failed"
+          requested = os.environ.get("BOOTSTRAP_REQUESTED_SERVICES") or "none"
+          effective = os.environ.get("BOOTSTRAP_EFFECTIVE_SERVICES") or "none"
+
+          with open(summary_path, "a", encoding="utf-8") as summary:
+              summary.write("## VPS bootstrap report\n\n")
+              summary.write(f"- Result: **{status}**\n")
+              summary.write(f"- Mode: {os.environ.get('BOOTSTRAP_MODE', 'unknown')}\n")
+              summary.write(
+                  f"- Target: `{os.environ.get('BOOTSTRAP_INVENTORY', 'unknown')}` / "
+                  f"`{os.environ.get('BOOTSTRAP_TARGET_HOST', 'unknown')}`\n"
               )
+              summary.write(
+                  f"- Environment / host ID: "
+                  f"{os.environ.get('BOOTSTRAP_ENVIRONMENT', 'unknown')} / "
+                  f"`{os.environ.get('BOOTSTRAP_HOST_ID', 'unknown')}`\n"
+              )
+              summary.write(f"- Requested services: {requested}\n")
+              summary.write(f"- Effective services: {effective}\n")
+              route = os.environ.get("BOOTSTRAP_ROUTE_FQDN", "")
+              if route:
+                  summary.write(f"- Nginx route: `{route}`\n")
+              if report:
+                  summary.write(
+                      f"- Reconciliation: {json.dumps(report.get('services', {}), sort_keys=True)}\n"
+                  )
+                  pending_reboot = report.get("pending_reboot")
+                  if pending_reboot is None:
+                      pending_reboot = os.environ.get("BOOTSTRAP_PENDING_REBOOT") or "unknown"
+                  summary.write(f"- Pending reboot: {pending_reboot}\n")
+                  if report.get("pending_reboot_packages"):
+                      summary.write(
+                          f"- Packages requiring reboot: "
+                          f"{', '.join(report['pending_reboot_packages'])}\n"
+                      )
+                  summary.write(
+                      f"- Manual recovery action: {report.get('manual_recovery_action', 'see job log')}\n"
+                  )
+                  for warning in report.get("warnings", []):
+                      summary.write(f"- Warning: {warning}\n")
+              else:
+                  summary.write(
+                      "- Diagnostics: no completed Ansible report; inspect the job log "
+                      "for the failed phase.\n"
+                  )
+              summary.write(
+                  "- Provider firewall: Sumopod rules are a manual boundary and were "
+                  "not verified by GitHub Actions.\n"
+              )
+              summary.write("- Automatic reboot: never performed.\n")
           PY
-
-          args=(--extra-vars "@$credentials_file")
-          args+=(--ssh-common-args "-o PubkeyAuthentication=no -o PreferredAuthentications=password")
-          if [[ "$EXECUTION_MODE" == "check" ]]; then
-            args+=(--check)
-          fi
-
-          ansible-playbook \
-            --inventory "$inventory" \
-            playbooks/bootstrap.yml \
-            --limit "$TARGET_HOSTS" \
-            "${args[@]}"
+          rm -f "$RUNNER_TEMP/bootstrap-report.json"
+          rm -f "$RUNNER_TEMP/bootstrap-ansible.log"
