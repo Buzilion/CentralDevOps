@@ -3,7 +3,7 @@ customer-builder-engine:
     staging:
       hosts:
         buz-staging-cbe-1:
-          ansible_host: 43.157.247.221
+          ansible_host: XXX
           ansible_user: deploy
           bootstrap_user: ubuntu
           bootstrap_host_id: buz-stg-1
