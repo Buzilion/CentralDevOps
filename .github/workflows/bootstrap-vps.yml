@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       inventory:
-        description: Exact path to a .yml/.yaml file in ansible/inventory; validated against repository files
+        description: Inventory file under ansible/inventory
         required: true
         type: string
       target_host:
@@ -104,14 +104,8 @@ jobs:
         env:
           ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
         run: |
-          shopt -s nullglob nocaseglob
-          inventory_candidates=(ansible/inventory/*.yml ansible/inventory/*.yaml)
-          inventories=()
-          for inventory in "${inventory_candidates[@]}"; do
-            if [[ -f "$inventory" && ! -L "$inventory" ]]; then
-              inventories+=("$inventory")
-            fi
-          done
+          shopt -s nullglob
+          inventories=(ansible/inventory/*.yml ansible/inventory/*.yaml)
           if (( ${#inventories[@]} == 0 )); then
             echo "::error::No inventory YAML files were found under ansible/inventory."
             exit 1
