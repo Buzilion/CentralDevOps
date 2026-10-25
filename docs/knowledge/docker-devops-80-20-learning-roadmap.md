@@ -2,7 +2,7 @@
 
 The goal is not to memorize Docker commands. It is to learn the 20% of Docker concepts that solve 80% of real deployment problems, then build toward a production-ready workflow using **Docker + Ansible + GitHub Actions + VPS**.
 
-We'll use a practical scenario throughout: manage VPS environments for development, staging, and production, run web applications and PostgreSQL in Docker, and let GitHub Actions automate deployments while Ansible manages server configuration.
+We'll use a practical scenario throughout: run development locally on each developer workstation, manage staging and production VPS environments, run web applications and PostgreSQL in Docker, and let GitHub Actions automate deployments while Ansible manages server configuration.
 
 ## 1. The learning roadmap
 
@@ -419,17 +419,17 @@ Understand this distinction:
 - `docker compose down`: stops and removes the Compose-managed containers and networks; named volumes are retained unless you explicitly request their removal.
 - `docker compose down -v`: also removes associated declared named and anonymous volumes. **Do not run this casually on production.**
 
-**Best practice:** keep the Compose file in version control. Use environment-specific configuration for dev, staging, and production rather than manually changing the server's configuration each time.
+**Best practice:** keep the Compose file in version control. Use separate configuration for local development, staging, and production rather than manually changing server configuration each time.
 
 For PostgreSQL, never treat a Docker volume as a backup. Back up the database separately, store copies outside the VPS, and test restoration.
 
 ## 6. Lesson 4 — Docker architecture for your VPS environments
 
-For a cost-conscious deployment with separate dev, staging, and production environments, start with one Docker Engine per VPS and isolated Compose projects.
+Development runs on developer workstations; staging and production are the only VPS environments. Prefer one Docker Engine per VPS and isolated Compose projects for the hosted environments.
 
 ```text
-Development VPS
-└── Docker Engine
+Developer workstation
+└── Local Docker Engine
     └── dev Compose project
         ├── dev app
         └── dev database
@@ -447,7 +447,7 @@ Production VPS
         └── production database
 ```
 
-The benefit of separate VPS environments is that staging configuration errors or resource consumption are less likely to affect production.
+Separate staging and production VPSs reduce the chance that staging configuration errors or resource consumption will affect production. If they share one VPS, distinct Compose projects, volumes, networks, credentials, and ports can reduce application-level conflicts, but they do not provide host-level isolation.
 
 If you later consolidate environments on one VPS, use distinct Compose project names, volumes, networks, credentials, and ports. But remember that containers on the same Docker host share the host's kernel and resource pool. Compose project separation alone is not a strong security boundary.
 
@@ -457,8 +457,6 @@ If you later consolidate environments on one VPS, use distinct Compose project n
 devops/
 ├── ansible.cfg
 ├── inventory/
-│   ├── dev/
-│   │   └── hosts.yml
 │   ├── staging/
 │   │   └── hosts.yml
 │   └── production/
