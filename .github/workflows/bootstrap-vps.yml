@@ -4,9 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       inventory:
-        description: Inventory file under ansible/inventory
+        description: Approved Ansible inventory
         required: true
-        type: string
+        type: choice
+        options:
+          - ansible/inventory/customer-builder-engine.yml
+          - ansible/inventory/outbound-marketing.yml
       target_host:
         description: One exact host alias from the selected inventory
         required: true
@@ -30,7 +33,7 @@ on:
         type: boolean
         default: false
       service_postgresql:
-        description: Select PostgreSQL and off-host recovery (also selects Docker)
+        description: Select Outbound Marketing PostgreSQL (also selects Docker)
         required: true
         type: boolean
         default: false
@@ -55,7 +58,6 @@ jobs:
       ansible_host: ${{ steps.validate.outputs.ansible_host }}
       host_id: ${{ steps.validate.outputs.bootstrap_host_id }}
       host_id_normalized: ${{ steps.validate.outputs.bootstrap_host_id_normalized }}
-      application_environment: ${{ steps.validate.outputs.bootstrap_application_environment }}
       environment: ${{ steps.validate.outputs.bootstrap_environment }}
       github_environment: ${{ steps.validate.outputs.github_environment }}
       application: ${{ steps.validate.outputs.bootstrap_application }}
@@ -69,13 +71,6 @@ jobs:
       known_hosts_variable: ${{ steps.validate.outputs.bootstrap_known_hosts_variable }}
       deploy_public_key_variable: ${{ steps.validate.outputs.deploy_public_key_variable }}
       deploy_private_key_secret: ${{ steps.validate.outputs.deploy_private_key_secret }}
-      postgresql_requested: ${{ steps.validate.outputs.bootstrap_postgresql_requested }}
-      postgresql_db_password_secret: ${{ steps.validate.outputs.bootstrap_postgresql_db_password_secret }}
-      postgresql_s3_access_key_id_variable: ${{ steps.validate.outputs.bootstrap_postgresql_s3_access_key_id_variable }}
-      postgresql_s3_secret_access_key_secret: ${{ steps.validate.outputs.bootstrap_postgresql_s3_secret_access_key_secret }}
-      postgresql_s3_restore_access_key_id_variable: ${{ steps.validate.outputs.bootstrap_postgresql_s3_restore_access_key_id_variable }}
-      postgresql_s3_restore_secret_access_key_secret: ${{ steps.validate.outputs.bootstrap_postgresql_s3_restore_secret_access_key_secret }}
-      postgresql_backup_policy_variable: ${{ steps.validate.outputs.bootstrap_postgresql_backup_policy_variable }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -104,18 +99,12 @@ jobs:
         env:
           ANSIBLE_CONFIG: ${{ github.workspace }}/ansible/ansible.cfg
         run: |
-          shopt -s nullglob
-          inventories=(ansible/inventory/*.yml ansible/inventory/*.yaml)
-          if (( ${#inventories[@]} == 0 )); then
-            echo "::error::No inventory YAML files were found under ansible/inventory."
-            exit 1
-          fi
-          for inventory in "${inventories[@]}"; do
-            ansible-playbook --inventory "$inventory" ansible/playbooks/bootstrap.yml --syntax-check
-            ansible-playbook --inventory "$inventory" ansible/playbooks/bootstrap-syntax-check.yml --syntax-check
-          done
+          ansible-playbook --inventory ansible/inventory/customer-builder-engine.yml ansible/playbooks/bootstrap.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/customer-builder-engine.yml ansible/playbooks/bootstrap-syntax-check.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/outbound-marketing.yml ansible/playbooks/bootstrap.yml --syntax-check
+          ansible-playbook --inventory ansible/inventory/outbound-marketing.yml ansible/playbooks/bootstrap-syntax-check.yml --syntax-check
 
-      - name: Test dispatch and shared-host validation
+      - name: Test dispatch and collision validation
         run: python ansible/tests/test_validate_bootstrap_request.py
 
       - name: Check bootstrap runner script syntax
@@ -184,7 +173,6 @@ jobs:
           ANSIBLE_HOST: ${{ needs.preflight.outputs.ansible_host }}
           BOOTSTRAP_HOST_ID: ${{ needs.preflight.outputs.host_id }}
           BOOTSTRAP_HOST_ID_NORMALIZED: ${{ needs.preflight.outputs.host_id_normalized }}
-          BOOTSTRAP_APPLICATION_ENVIRONMENT: ${{ needs.preflight.outputs.application_environment }}
           BOOTSTRAP_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
           GITHUB_ENVIRONMENT: ${{ needs.preflight.outputs.github_environment }}
           BOOTSTRAP_APPLICATION: ${{ needs.preflight.outputs.application }}
@@ -200,8 +188,7 @@ jobs:
           SUMOPOD_FIREWALL_REVIEWED: ${{ vars.SUMOPOD_FIREWALL_REVIEWED }}
           SUMOPOD_SSH_SOURCE_RESTRICTED: ${{ vars.SUMOPOD_SSH_SOURCE_RESTRICTED }}
           SUMOPOD_PUBLIC_SSH_EXCEPTION_APPROVED: ${{ vars.SUMOPOD_PUBLIC_SSH_EXCEPTION_APPROVED }}
-          # Preflight sets this only for a verified shared physical host.
-          BOOTSTRAP_SHARED_HOST_APPROVED: ${{ needs.preflight.outputs.shared_host_collision }}
+          BOOTSTRAP_SHARED_HOST_APPROVED: ${{ vars.BOOTSTRAP_SHARED_HOST_APPROVED }}
           BOOTSTRAP_DOCKER_CE_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_DOCKER_CE_PACKAGE_VERSION }}
           BOOTSTRAP_DOCKER_CLI_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_DOCKER_CLI_PACKAGE_VERSION }}
           BOOTSTRAP_CONTAINERD_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_CONTAINERD_PACKAGE_VERSION }}
@@ -212,12 +199,12 @@ jobs:
           BOOTSTRAP_POSTGRES_IMAGE: ${{ vars.BOOTSTRAP_POSTGRES_IMAGE }}
           BOOTSTRAP_POSTGRES_DATA_DIRECTORY: ${{ vars.BOOTSTRAP_POSTGRES_DATA_DIRECTORY }}
           BOOTSTRAP_AWS_CLI_IMAGE: ${{ vars.BOOTSTRAP_AWS_CLI_IMAGE }}
-          BOOTSTRAP_POSTGRESQL_DB_PASSWORD: ${{ needs.preflight.outputs.postgresql_requested == 'true' && secrets[needs.preflight.outputs.postgresql_db_password_secret] || '' }}
-          BOOTSTRAP_POSTGRESQL_S3_ACCESS_KEY_ID: ${{ needs.preflight.outputs.postgresql_requested == 'true' && vars[needs.preflight.outputs.postgresql_s3_access_key_id_variable] || '' }}
-          BOOTSTRAP_POSTGRESQL_S3_SECRET_ACCESS_KEY: ${{ needs.preflight.outputs.postgresql_requested == 'true' && secrets[needs.preflight.outputs.postgresql_s3_secret_access_key_secret] || '' }}
-          BOOTSTRAP_POSTGRESQL_S3_RESTORE_ACCESS_KEY_ID: ${{ needs.preflight.outputs.postgresql_requested == 'true' && vars[needs.preflight.outputs.postgresql_s3_restore_access_key_id_variable] || '' }}
-          BOOTSTRAP_POSTGRESQL_S3_RESTORE_SECRET_ACCESS_KEY: ${{ needs.preflight.outputs.postgresql_requested == 'true' && secrets[needs.preflight.outputs.postgresql_s3_restore_secret_access_key_secret] || '' }}
-          BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED: ${{ needs.preflight.outputs.postgresql_requested == 'true' && vars[needs.preflight.outputs.postgresql_backup_policy_variable] || '' }}
+          OUTBOUND_MARKETING_DB_PASSWORD: ${{ secrets.OUTBOUND_MARKETING_DB_PASSWORD }}
+          BUZ_STG_PROD_1_ID: ${{ vars.BUZ_STG_PROD_1_ID }}
+          BUZ_STG_PROD_1_SECRET: ${{ secrets.BUZ_STG_PROD_1_SECRET }}
+          BUZ_STG_PROD_1_RESTORE_ID: ${{ vars.BUZ_STG_PROD_1_RESTORE_ID }}
+          BUZ_STG_PROD_1_RESTORE_SECRET: ${{ secrets.BUZ_STG_PROD_1_RESTORE_SECRET }}
+          BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED: ${{ vars.BOOTSTRAP_POSTGRES_BACKUP_POLICY_VERIFIED }}
           BOOTSTRAP_ALLOY_PACKAGE_VERSION: ${{ vars.BOOTSTRAP_ALLOY_PACKAGE_VERSION }}
           BOOTSTRAP_ALLOY_DELIVERY_VERIFIED: ${{ vars.BOOTSTRAP_ALLOY_DELIVERY_VERIFIED }}
           GRAFANA_PROMETHEUS_URL: ${{ vars[format('{0}_GRAFANA_CLOUD_PROMETHEUS_URL', needs.preflight.outputs.host_id_normalized)] }}
@@ -239,7 +226,6 @@ jobs:
           BOOTSTRAP_INVENTORY: ${{ needs.preflight.outputs.inventory }}
           BOOTSTRAP_TARGET_HOST: ${{ needs.preflight.outputs.target_host }}
           BOOTSTRAP_HOST_ID: ${{ needs.preflight.outputs.host_id }}
-          BOOTSTRAP_APPLICATION_ENVIRONMENT: ${{ needs.preflight.outputs.application_environment }}
           BOOTSTRAP_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
           BOOTSTRAP_REQUESTED_SERVICES: ${{ needs.preflight.outputs.requested_services }}
           BOOTSTRAP_EFFECTIVE_SERVICES: ${{ needs.preflight.outputs.effective_services }}
@@ -278,12 +264,9 @@ jobs:
                   f"`{os.environ.get('BOOTSTRAP_TARGET_HOST', 'unknown')}`\n"
               )
               summary.write(
-                  f"- Application / bootstrap environment: "
-                  f"{os.environ.get('BOOTSTRAP_APPLICATION_ENVIRONMENT', 'unknown')} / "
-                  f"{os.environ.get('BOOTSTRAP_ENVIRONMENT', 'unknown')}\n"
-              )
-              summary.write(
-                  f"- Physical host ID: `{os.environ.get('BOOTSTRAP_HOST_ID', 'unknown')}`\n"
+                  f"- Environment / host ID: "
+                  f"{os.environ.get('BOOTSTRAP_ENVIRONMENT', 'unknown')} / "
+                  f"`{os.environ.get('BOOTSTRAP_HOST_ID', 'unknown')}`\n"
               )
               summary.write(f"- Requested services: {requested}\n")
               summary.write(f"- Effective services: {effective}\n")

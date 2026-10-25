@@ -84,9 +84,9 @@
       - sh
       - -c
       - >-
-        PGPASSWORD="$(cat /run/secrets/{{ bootstrap_postgresql_compose_secret_name }})"
-        psql -h 127.0.0.1 -w -U {{ bootstrap_postgresql_database_user }}
-        -d {{ bootstrap_postgresql_database_name }} -tAc "SELECT 1"
+        PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)"
+        psql -h 127.0.0.1 -w -U outbound_marketing
+        -d outbound_marketing -tAc "SELECT 1"
   register: bootstrap_postgresql_auth_test
   changed_when: false
   failed_when: false
@@ -160,7 +160,7 @@
     argv:
       - /usr/bin/systemctl
       - is-active
-      - "{{ bootstrap_postgresql_backup_id }}.timer"
+      - buzilion-outbound-postgresql-backup.timer
   register: bootstrap_postgresql_backup_timer_state
   failed_when: false
   changed_when: false
@@ -204,10 +204,9 @@
       - bootstrap_postgresql_last_backup.rc == 0
       - >-
         (bootstrap_postgresql_now.stdout | int)
-        - (bootstrap_postgresql_last_backup_parts | first | default('0') | int)
-        <= (bootstrap_postgresql_backup_max_age_seconds | int)
+        - (bootstrap_postgresql_last_backup_parts | first | default('0') | int) <= 43200
       - bootstrap_postgresql_last_backup_parts | length == 2
-    fail_msg: PostgreSQL is selected but its latest successful off-host backup is missing or older than its configured recovery window.
+    fail_msg: PostgreSQL is selected but its latest successful off-host backup is missing or older than 12 hours.
   when: bootstrap_postgresql_existing_container.rc == 0
 
 - name: Report PostgreSQL recovery status

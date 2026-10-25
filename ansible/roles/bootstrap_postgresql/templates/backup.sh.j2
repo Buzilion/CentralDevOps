@@ -7,11 +7,7 @@ container="{{ bootstrap_postgresql_container_name }}"
 aws_image="{{ bootstrap_aws_cli_image }}"
 endpoint="{{ bootstrap_postgresql_s3_endpoint }}"
 bucket="{{ bootstrap_postgresql_bucket }}"
-{% if bootstrap_postgresql_backup_namespace %}
-prefix="bootstrap/{{ bootstrap_postgresql_backup_namespace }}/{{ bootstrap_application_environment }}/{{ bootstrap_host_id }}/postgresql"
-{% else %}
 prefix="bootstrap/{{ bootstrap_environment }}/{{ bootstrap_host_id }}/postgresql"
-{% endif %}
 writer_env="{{ bootstrap_postgresql_config_directory }}/s3-writer.env"
 restore_env="{{ bootstrap_postgresql_config_directory }}/s3-restore.env"
 state_directory="{{ bootstrap_postgresql_state_directory }}"
@@ -22,7 +18,7 @@ restore_database="bootstrap_restore_test_$(date -u +%s)"
 mkdir -p "$state_directory"
 
 docker exec --user root "$container" sh -c \
-  'PGPASSWORD="$(cat /run/secrets/{{ bootstrap_postgresql_compose_secret_name }})" pg_dump -h 127.0.0.1 -w -Fc -U {{ bootstrap_postgresql_database_user }} -d {{ bootstrap_postgresql_database_name }}' \
+  'PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)" pg_dump -h 127.0.0.1 -w -Fc -U outbound_marketing -d outbound_marketing' \
   | docker run --rm -i --env-file "$writer_env" "$aws_image" \
       s3 cp - "s3://${bucket}/${object_key}" \
       --endpoint-url "$endpoint" \
@@ -51,14 +47,14 @@ printf '%s\n' "$object_key"
 if [[ "${1:-}" == "--initial-restore-test" ]]; then
   cleanup() {
     docker exec --user root "$container" sh -c \
-      'PGPASSWORD="$(cat /run/secrets/{{ bootstrap_postgresql_compose_secret_name }})" dropdb -h 127.0.0.1 -w --if-exists -U {{ bootstrap_postgresql_database_user }} "$1"' \
+      'PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)" dropdb -h 127.0.0.1 -w --if-exists -U outbound_marketing "$1"' \
       bootstrap "$restore_database" \
         >/dev/null 2>&1 || true
   }
   trap cleanup EXIT
 
   docker exec --user root "$container" sh -c \
-    'PGPASSWORD="$(cat /run/secrets/{{ bootstrap_postgresql_compose_secret_name }})" createdb -h 127.0.0.1 -w -U {{ bootstrap_postgresql_database_user }} "$1"' \
+    'PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)" createdb -h 127.0.0.1 -w -U outbound_marketing "$1"' \
     bootstrap "$restore_database"
   docker run --rm --env-file "$restore_env" "$aws_image" \
     s3 cp "s3://${bucket}/${object_key}" - \
@@ -66,7 +62,7 @@ if [[ "${1:-}" == "--initial-restore-test" ]]; then
     --region "{{ bootstrap_postgresql_s3_region }}" \
     --no-cli-pager \
     | docker exec -i --user root "$container" sh -c \
-        'PGPASSWORD="$(cat /run/secrets/{{ bootstrap_postgresql_compose_secret_name }})" pg_restore -h 127.0.0.1 -w -U {{ bootstrap_postgresql_database_user }} -d "$1" --exit-on-error --no-owner' \
+        'PGPASSWORD="$(cat /run/secrets/outbound_marketing_db_password)" pg_restore -h 127.0.0.1 -w -U outbound_marketing -d "$1" --exit-on-error --no-owner' \
         bootstrap "$restore_database"
   cleanup
   trap - EXIT

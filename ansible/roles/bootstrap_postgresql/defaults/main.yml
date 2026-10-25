@@ -1,23 +1,13 @@
 ---
-bootstrap_postgresql_directory: "/opt/buzilion/{{ bootstrap_application }}/postgresql"
-bootstrap_postgresql_config_directory: "/etc/buzilion/{{ bootstrap_application }}/postgresql"
-bootstrap_postgresql_state_directory: "/var/lib/buzilion/{{ bootstrap_application }}/postgresql"
-bootstrap_postgresql_compose_file: "{{ bootstrap_postgresql_directory }}/compose.yaml"
-bootstrap_postgresql_container_name: "{{ bootstrap_application }}-postgres"
-bootstrap_postgresql_compose_project_name: "buzilion-{{ bootstrap_application }}-postgresql"
-bootstrap_postgresql_database_name: "{{ bootstrap_application | replace('-', '_') }}"
-bootstrap_postgresql_database_user: "{{ bootstrap_application | replace('-', '_') }}"
-bootstrap_postgresql_compose_secret_name: "{{ bootstrap_application | replace('-', '_') }}_db_password"
-bootstrap_postgresql_volume_name: "{{ bootstrap_application | replace('-', '_') }}_postgres_data"
-bootstrap_postgresql_network_name: ""
+bootstrap_postgresql_directory: /opt/buzilion/outbound-marketing/postgresql
+bootstrap_postgresql_config_directory: /etc/buzilion/postgresql
+bootstrap_postgresql_state_directory: /var/lib/buzilion/postgresql
+bootstrap_postgresql_compose_file: /opt/buzilion/outbound-marketing/postgresql/compose.yaml
+bootstrap_postgresql_container_name: outbound-postgres
+bootstrap_postgresql_volume_name: outbound_postgres_data
+bootstrap_postgresql_network_name: om-backend
 bootstrap_postgresql_data_directory: ""
-bootstrap_postgresql_backup_id: "buzilion-{{ bootstrap_application }}-postgresql-backup"
-bootstrap_postgresql_backup_namespace: "{{ bootstrap_application }}"
-bootstrap_postgresql_backup_script_path: "/usr/local/sbin/{{ bootstrap_postgresql_backup_id }}"
-bootstrap_postgresql_backup_service_file: "/etc/systemd/system/{{ bootstrap_postgresql_backup_id }}.service"
-bootstrap_postgresql_backup_timer_file: "/etc/systemd/system/{{ bootstrap_postgresql_backup_id }}.timer"
-bootstrap_postgresql_bucket: ""
-bootstrap_postgresql_s3_endpoint: ""
-bootstrap_postgresql_s3_region: ""
-bootstrap_postgresql_backup_interval: ""
-bootstrap_postgresql_backup_max_age_seconds: 0
+bootstrap_postgresql_bucket: buz-stg-prod-1-lb4jef
+bootstrap_postgresql_s3_endpoint: https://kencana.basic.box.cloudeka.id
+bootstrap_postgresql_s3_region: kencana
+bootstrap_postgresql_backup_interval: hourly
