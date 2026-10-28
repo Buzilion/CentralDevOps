@@ -16,7 +16,7 @@ Produce implementation-ready page breakdowns — one `[page-name].md` per page i
 ### 1. Ground
 
 - Read `$ARGUMENTS` for page name(s) or scope.
-- Auto-read when they exist: `docs/prd/main-v1.md`, `docs/prd/[module]-v1.md`, `docs/design/sitemap.md`, `docs/design/data-model.md`, `docs/design/uiux-design.md`.
+- Auto-read the latest applicable PRD from `docs/prd/[project-folder]/prd-vN.md` and any module PRDs in that same folder, plus `docs/design/sitemap.md`, `docs/design/data-model.md`, and `docs/design/uiux-design.md`. Match the PRD folder to the current project/page scope.
 - Use design-system component names/variants/tokens when available; fall back to descriptive naming otherwise.
 - Match pages against sitemap and PRD; pull context automatically.
 - **Visual benchmark** — mentally reference top Dribbble/Behance shots in the same domain. The page must compete with those, not with generic SaaS templates.

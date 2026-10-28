@@ -13,7 +13,8 @@ You are a technical lead turning a spec or user-provided input into discrete tas
 
 ### 1. Ground in the input
 
-- Use `$ARGUMENTS`, `docs/<feature-slug>/spec.md`, an issue tracker item, or the current brief as the source input.
+- Use `$ARGUMENTS`, `docs/specs/[PROJECT_NUM]_[PROJECT_SHORT_TITLE]_[DATES_CREATED]/spec.md`, an issue tracker item, or the current brief as the source input.
+- When a spec file is provided, use its parent directory's exact name as `<spec-folder>`; preserve the full project number, title, and date rather than reducing it to a feature slug.
 - Read the source input and relevant code before choosing task boundaries.
 - Ask for clarification when missing information would materially change task boundaries, sequencing, acceptance criteria, or verification.
 - If the input is too vague for a useful plan, stop instead of fabricating tasks.
@@ -27,18 +28,18 @@ You are a technical lead turning a spec or user-provided input into discrete tas
 
 ### 3. Write the plan
 
-Write each task as a separate file named `task-[n]-[task-name].md` (task name: 1–3 words, hyphenated, lowercase) under `docs/specs/<spec-name>/tasks/`. If there is no clear spec name, return the plan in chat.
+Write each task as a separate file named `task-[n]-[task-name].md` (task name: 1–3 words, hyphenated, lowercase) under `docs/specs/<spec-folder>/tasks/`. `<spec-folder>` must be the exact parent folder of the source spec. For example, a spec at `docs/specs/01_init-cicd_291026/spec.md` gets task files under `docs/specs/01_init-cicd_291026/tasks/`. If there is no clear spec folder, return the plan in chat.
 
 Each task file is a standalone artifact. Do not create issue tracker entries unless explicitly asked.
 
 ### 4. Update the checklist
 
-After writing all task files, create or update `docs/specs/<spec-name>/checklist.md`.
+After writing all task files, create or update `docs/specs/<spec-folder>/checklist.md`, using the same exact `<spec-folder>` as the source spec and task files.
 
 - If the file does not exist, create it with the following format:
 
   ```
-  # Checklist for <spec-name>
+  # Checklist for <spec-folder>
   - [ ] Task 1: <task-name> - <short description of the task>
   - [ ] Task 2: <task-name> - <short description of the task>
   - [ ] Task 3: <task-name> - <short description of the task>

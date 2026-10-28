@@ -1,6 +1,6 @@
 ---
 name: spec
-description: "Write an implementation spec to docs/<feature-slug>/spec.md and pause for human review. Use when the user says \"write a spec\", \"spec this out\", \"technical design\", \"design doc\", or when a task has decisions, invariants, or contracts that should be reviewed before code is written."
+description: "Write an implementation spec to docs/specs/[project-folder]/spec.md and pause for human review. Use when the user says \"write a spec\", \"spec this out\", \"technical design\", \"design doc\", or when a task has decisions, invariants, or contracts that should be reviewed before code is written."
 user-invocable: true
 argument-hint: "<feature description, context, or constraints>"
 ---
@@ -14,8 +14,10 @@ You are a principal engineer writing a technical spec for an AI agent to execute
 ### 1. Align
 
 - Treat the full argument as the request unless the user names a feature.
-- Derive a kebab-case feature slug if no name is given.
-- Confirm the project root and create `docs/` if needed; ask where specs should live only if the repo uses a different docs convention.
+- Derive a concise kebab-case project short title if no name is given.
+- If the source PRD is in `docs/prd/[project-folder]/`, use that exact folder name under `docs/specs/` so the PRD and spec stay associated. Otherwise, reuse a matching existing spec folder; for a new, unpaired spec, use `[PROJECT_NUM]_[PROJECT_SHORT_TITLE]_[DATES_CREATED]` with a zero-padded sequence number, kebab-case title, and creation date in `DDMMYY` format. Choose the next sequence number after the highest existing project number under `docs/prd/` or `docs/specs/`.
+- Preserve the complete project folder name, including its number and date. If the target folder already contains a different spec, use a unique next sequence number rather than overwriting it.
+- Confirm the project root and create `docs/specs/` if needed; ask where specs should live only if the repo uses a different docs convention.
 - Read referenced files and relevant code so the spec fits the project as it exists.
 - Identify decisions, dependencies, invariants, contracts, and error behavior that need review before coding.
 - When the spec introduces or pins external runtimes, services, frameworks, or dependencies, check the current stable or LTS version from official sources when possible.
@@ -26,7 +28,7 @@ You are a principal engineer writing a technical spec for an AI agent to execute
 
 ### 2. Write
 
-Write `docs/<feature-slug>/spec.md` using the sections below. Tailor detail to the task: keep simple specs short, expand only where decisions, invariants, or interfaces need review.
+Write `docs/specs/[project-folder]/spec.md` using the sections below, creating the project folder if needed. Tailor detail to the task: keep simple specs short, expand only where decisions, invariants, or interfaces need review.
 
 - **What**: one-paragraph summary.
 - **Context**: why this matters, what exists today, links to relevant code.
@@ -44,10 +46,11 @@ Write `docs/<feature-slug>/spec.md` using the sections below. Tailor detail to t
 After writing, print:
 
 ```text
-Spec written to docs/<feature-slug>/spec.md
+Spec written to docs/specs/[project-folder]/spec.md
 Review and reply "approve" to proceed, "edit" to revise, or leave feedback.
 ```
 
+Replace the placeholder with the actual folder name.
 Then stop. Do not plan, implement, or run further tools until the human responds.
 
 ## Rules
