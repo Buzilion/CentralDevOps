@@ -1,5 +1,0 @@
-app_deploy_directory: /opt/application
-app_image: ghcr.io/example/application
-app_project_name: application
-app_proxy_network: application-proxy
-app_service_name: app

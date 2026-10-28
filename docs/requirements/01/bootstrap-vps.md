@@ -1,0 +1,53 @@
+# VPS Bootstrap Workflow Requirements
+
+- First validation
+  - SSH to the VPS host using username and password (input on workflow dispatch)
+  - If error, stop the workflow
+  - Else, check the VPS health using command like `uptime`, `systemctl --failed`, `df -hT`, `free -h`, or any other more suitable command. Define threshold in which define the VPS to be healthy or not.
+- Configure SSH
+  - put public key on the GitHub Environment Variables into the VPS (private key will be put in GitHub Environment Secrets)
+  - Configure the sshd config files:
+    - enable pubkeyauth
+    - disable password auth
+    - permit root login no
+    - max auth retries 3 times
+    - list allowed users (ubuntu, deployment)
+  - Install Fail2ban
+- Configure host firewall
+  - remove any open to all public port, specify the port
+  - set port 443/TCP public
+  - set port 83/TCP public
+  - set port 22/TCP public
+  - set default deny inbound connection
+  - set default allow outbound connection
+- Update-upgrade packages for enhanced security
+- Install & configure docker (containerization; optional option on workflow dispatch)
+  - start service
+  - configure docker compose
+  - configure docker network
+  - [more detailed config]
+  - ...
+  - restart service
+- Install & configure nginx (reverse proxy; optional option on workflow dispatch)
+  - start service (if docker checked, then start container)
+  - TLS certificate setup
+  - Configure routing
+  - [more detailed config]
+  - ...
+  - restart service
+- Install & configure postgresql (database; optional option on workflow dispatch)
+  - start service (if docker checked, then start container)
+  - Configure backup
+  - [more detailed config]
+  - ...
+  - restart service
+- Install & configure grafana cloud & alloy(monitoring; optional option on workflow dispatch)
+  - start service (if docker checked, then start container)
+  - [more detailed config]
+  - ...
+  - restart service
+- Configure user account & ownership (based on the installed services)
+- Last validation
+  - Ensure all the service is running without error
+  - Ensure that all the configuration is correct or as expected
+  - check the VPS health using command like `uptime`, `systemctl --failed`, `df -hT`, `free -h`, or any other more suitable command. Define threshold in which define the VPS to be healthy or not.
