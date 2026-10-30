@@ -1,0 +1,14 @@
+name: Negative expression injection fixture
+on:
+  workflow_dispatch:
+    inputs:
+      value:
+        description: Test value
+        required: false
+        type: string
+jobs:
+  injection:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Echo untrusted input
+        run: echo "${{ github.event.inputs.value }}"
