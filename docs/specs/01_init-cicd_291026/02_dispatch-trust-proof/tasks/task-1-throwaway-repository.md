@@ -12,7 +12,7 @@ Prepare a disposable app repository and narrowly scoped GitHub App access for th
 
 ## Context
 
-The proof depends on the CentralDevOps `main` protections and the `Staging` and `Production` Environments established by spec 01. Do not create test resources until spec 01's checklist is fully complete and the dependency is verified.
+The proof depends on the CentralDevOps `main` and `release/*` protections and the `Staging` and `Production` Environments established by spec 01. Do not create test resources until spec 01's checklist is fully complete and the dependency is verified.
 
 The dispatch GitHub App is installed only on `Buzilion/CentralDevOps` and has only `Actions: read and write` plus automatically required metadata access. Any temporary App credentials are accessible only to the disposable app repository through selected-repository org secrets. Do not add a PAT, install the App broadly, or create deploy-related secrets.
 
@@ -25,7 +25,7 @@ The dispatch GitHub App is installed only on `Buzilion/CentralDevOps` and has on
 
 ## Proposed approach
 
-1. Verify the spec 01 checklist is fully complete and confirm the audited CentralDevOps `Staging` and `Production` Environments and protected `main` branch are available.
+1. Verify the spec 01 checklist is fully complete and confirm the audited CentralDevOps `Staging` and `Production` Environments and protected `main` and `release/*` branches are available.
 2. Create one clearly named throwaway repository under the organization, containing no production source or sensitive data. Use its reviewed `main` branch for the test workflow.
 3. Configure only the `Staging` and `Production` Environments in the throwaway repository. Add no secrets. Leave app-side `Production` without required reviewers and restrict its deployment refs to `main` and any explicitly approved release refs.
 4. Give only the throwaway repository access to any temporary dispatch App credentials. Verify the App installation remains limited to CentralDevOps and its permissions match SEC-10.

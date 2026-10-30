@@ -24,7 +24,7 @@
 
 1. **Every app repository keeps two manual workflows: `build.yml` and `deploy.yml`.** Build and deploy stay separate operations.
 2. **The immutable GHCR digest is the release identity.** Deploy `ghcr.io/OWNER/IMAGE@sha256:…`, never a mutable tag.
-3. **Deployment runs in CentralDevOps, triggered by an authenticated cross-repo dispatch (v5).** The app's `deploy.yml` validates the request and dispatches the CentralDevOps `deploy-app.yml` (`workflow_dispatch`, on `main`); the privileged job runs **in the CentralDevOps repository** and selects the matching CentralDevOps `Staging`/`Production` Environment only after the request is validated. A `workflow_call` into the app's context is not used, because it cannot reach CentralDevOps-held secrets (see the correction below). The deploy SSH key lives only in the CentralDevOps Environments (§17 #1).
+3. **Deployment runs in CentralDevOps, triggered by an authenticated cross-repo dispatch (v5).** The app's `deploy.yml` validates the request and dispatches the CentralDevOps `deploy-app.yml` (`workflow_dispatch`) on a ref permitted by the requested Environment: any branch for `Staging`, and `release/*` only for `Production`. The privileged job runs **in the CentralDevOps repository** and selects the matching Environment only after the request is validated. A `workflow_call` into the app's context is not used, because it cannot reach CentralDevOps-held secrets (see the correction below). The deploy SSH key lives only in the CentralDevOps Environments (§17 #1).
 4. **Authentication combines two proofs:** a dispatch-only GitHub App installation token authorizes the dispatch itself, and a request-bound GitHub OIDC token from the app's `deploy.yml` run proves which repository, workflow, ref and Environment made the request. Neither is a shared secret or PAT. See §8.
 5. **App runtime secrets stay owned by the app** (in the app's `Staging`/`Production` GitHub Environment), stay encrypted at rest and in transit, and are never passed as plaintext through artifacts. Because the deploy workflow now runs in a different repository, the secrets cross a trust boundary and are sent as a sealed `age` bundle (§7.2); the age private key lives only in the CentralDevOps Environments.
 6. **A central registry in CentralDevOps (`apps/<app>/<env>.yml`) decides where each app runs, which domains it may use, and its resource ceilings.** The app manifest declares only the route it wants (domain, port, service, health path). No per-VPS GitHub variables.
@@ -112,7 +112,7 @@ Both repository kinds use exactly two Environments: **`Staging`** and **`Product
 | Setting | CentralDevOps `Production` | App `Production` |
 |---|---|---|
 | Required reviewers | **Yes** for production infrastructure changes **and for production deployments**, because the `deploy` job runs in this Environment (§8.2) | Not required by default, to avoid a double approval; the production approval gate is the CentralDevOps `Production` Environment |
-| Deployment branches | `main` only | `main` (or release branches) only |
+| Deployment branches | Protected `release/*` only | `main` (or release branches) only |
 | Secrets | Infrastructure credentials, `DEPLOY_SSH_PRIVATE_KEY`, sealed-bundle age key | App runtime secrets, dispatch App credentials |
 
 **Approvers:** production deployments must be approval-gated in CentralDevOps `Production`. Initially the repository owner is the required approver. Once the deployment team is assigned, make the team the required approver, or add it alongside the owner if both approvals are decided to be required. Keep the Environment-to-VPS mapping fixed (§8.2) so the approval always applies to the host actually targeted.
@@ -209,7 +209,7 @@ CentralDevOps/
 │   ├── schemas/{registry,app-manifest}.schema.json
 │   └── tools/verify-oidc.py       # OIDC verification of the dispatching app run (§8.1)
 ├── .github/
-│   ├── CODEOWNERS                 # apps/**, deployment/**, roles/** need review
+│   ├── CODEOWNERS                 # apps/**, deployment/**, roles/**, workflows/**, CODEOWNERS and rulesets need review
 │   ├── workflows/{bootstrap-vps,configure-vps,verify-vps,deploy-app}.yml   # deploy-app.yml is triggered by workflow_dispatch and runs in CentralDevOps
 │   └── actions/request-deploy/action.yml   # used by app deploy.yml: seals the bundle, mints the OIDC token, dispatches, polls
 └── README.md
@@ -298,7 +298,7 @@ Operator flow is unchanged: copy `image_ref` from the build summary into the dep
 | `target_environment` | choice: `Staging`, `Production` |
 | `image_ref` | string, full `ghcr.io/…@sha256:…` |
 
-The app job runs in the app repository and triggers the CentralDevOps `deploy-app.yml` (`workflow_dispatch`, on `main`) through the reviewed `request-deploy` action. The privileged deployment then runs **in CentralDevOps**, so the app never holds the deploy SSH key. The app job does only these things:
+The app job runs in the app repository and triggers the CentralDevOps `deploy-app.yml` (`workflow_dispatch`) through the reviewed `request-deploy` action, using a CentralDevOps ref permitted by the requested Environment: any branch for `Staging`, and `release/*` only for `Production`. The privileged deployment then runs **in CentralDevOps**, so the app never holds the deploy SSH key. The app job does only these things:
 
 1. `permissions: contents: read, id-token: write`. The job declares `environment: ${{ inputs.target_environment }}` in the **app** repository, only to read that Environment's app runtime secrets and variables (no approval is required there by default, §4.1).
 2. Reject a malformed `image_ref` early (regex; `deploy-app.yml` re-validates against the registry).
@@ -341,7 +341,7 @@ Concurrency: `group: deploy-<app>-<environment>`, `cancel-in-progress: false`. G
 
 ### 8.3 Deploy job steps
 
-1. Check out CentralDevOps at the commit the run executes (`github.sha`). Dispatches run only on the protected `main` branch (the CentralDevOps Environments restrict deployment branches to `main`), so the workflow and scripts are reviewed centrally.
+1. Check out CentralDevOps at the commit the run executes (`github.sha`). The selected Environment permits any branch for `Staging` and only `release/*` for `Production`; `main` remains protected for changes merged to it.
 2. Decrypt the sealed bundle with `DEPLOY_RUNTIME_AGE_PRIVATE_KEY` into a `umask 077` temp dir; `::add-mask::` every secret value; never upload this directory.
 3. **Validate the manifest** (schema; the domain must be in the registry's `domains` allow-list; port and health path sane).
 4. **Run the Compose policy** on `docker compose config --format json` (§9.4).
@@ -496,8 +496,9 @@ Schema migrations must be backward compatible with the previous release (expand/
 - Least-privilege `permissions`; app `deploy.yml` needs `contents: read` and `id-token: write`.
 - Pin third-party actions and the `request-deploy` action to reviewed commit SHAs.
 - Never interpolate untrusted input directly in shell; pass via `env:` and validate with strict regexes.
-- Restrict Production Environments to `main`; reviewers on the Production Environment where the deploy job runs (§4.1).
-- CODEOWNERS on `apps/**`, `deployment/**`, `roles/**`, and `.github/workflows/**`. Registry changes are security changes.
+- Restrict the CentralDevOps Production Environment to protected branches matching `release/*`; reviewers on the Production Environment where the deploy job runs (§4.1). App Production Environments allow `main` or release branches.
+- Protect `main` and `release/*` with the same ruleset: require a pull request, one approval, code-owner review, required status checks and up-to-date branches; block deletion and non-fast-forward updates.
+- CODEOWNERS on `apps/**`, `deployment/**`, `roles/**`, `.github/workflows/**`, `.github/CODEOWNERS` and `.github/rulesets/**` before merging to `main` or `release/*`. Registry changes are security changes.
 - Infra workflows reject `github.actor` equal to the dispatch App's identity.
 
 ### 12.3 Threats and mitigations

@@ -45,7 +45,7 @@ Use lowercase directory names. Use kebab-case for descriptive multiword director
 
 ### 3.1 Environments
 
-Every CentralDevOps and onboarded app repository has exactly two GitHub Environments: `Staging` and `Production` (SEC-01). Do not create an Environment per VPS.
+Every CentralDevOps and onboarded app repository has exactly two GitHub Environments: `Staging` and `Production` (SEC-01). Each Environment maps to its corresponding deployment VPS; do not create an Environment per VPS.
 
 | Use | Staging | Production |
 |---|---|---|
@@ -232,7 +232,7 @@ CentralDevOps/
 - Put evolving source requirements/design material in `docs/notes/requirements/<initiative>/<version>/`.
 - Put Ansible host-specific facts only in `inventories/<environment>/`; put app-specific placement and policy only in `apps/<app-slug>/`.
 - Put infrastructure automation in `playbooks/` and `roles/`; put server-side deployment scripts, templates, schemas, public keys, and validation tools in their respective `deployment/` subdirectories.
-- Create or maintain CentralDevOps code-owner rules at `.github/CODEOWNERS`. Require code-owner review for `apps/**`, `deployment/**`, `roles/**`, and `.github/workflows/**` (SEC-13).
+- Create or maintain CentralDevOps code-owner rules at `.github/CODEOWNERS`. Require code-owner review for `apps/**`, `deployment/**`, `roles/**`, `.github/workflows/**`, `.github/CODEOWNERS` and `.github/rulesets/**` before merging to `main` or `release/*`; protect both branch patterns with the same repository ruleset (SEC-13).
 
 ### 8.3 App repository directory map
 

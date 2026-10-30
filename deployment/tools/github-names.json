@@ -1,0 +1,137 @@
+{
+  "prefixes": [
+    "ANSIBLE",
+    "VPS",
+    "DEPLOY",
+    "GHCR",
+    "APP",
+    "BACKUP",
+    "MONITORING"
+  ],
+  "reserved_prefixes": [
+    "STAGING_",
+    "PRODUCTION_",
+    "GITHUB_"
+  ],
+  "generic_names": [
+    "TOKEN",
+    "KEY",
+    "SECRET",
+    "PASSWORD",
+    "SERVER_IP"
+  ],
+  "names": {
+    "ANSIBLE_CONFIG_PATH": {
+      "kind": "variable",
+      "level": "repository",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "ANSIBLE_REQUIREMENTS_PATH": {
+      "kind": "variable",
+      "level": "repository",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "ANSIBLE_PLAYBOOKS_PATH": {
+      "kind": "variable",
+      "level": "repository",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "DEPLOY_REGISTRY_DIR": {
+      "kind": "variable",
+      "level": "repository",
+      "introduced_by": "10_deploy-authorization"
+    },
+    "ANSIBLE_INVENTORY_PATH": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "DEPLOY_HEALTHCHECK_TIMEOUT": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "11_deploy-execution-and-rollback"
+    },
+    "MONITORING_ENDPOINT": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "14_observability-and-alerting"
+    },
+    "BACKUP_RETENTION_DAYS": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "BACKUP_S3_ENDPOINT": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "BACKUP_S3_REGION": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "BACKUP_S3_BUCKET": {
+      "kind": "variable",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "ANSIBLE_SSH_PRIVATE_KEY": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "VPS_INITIAL_ACCESS_PASSWORD": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    },
+    "DEPLOY_SSH_PRIVATE_KEY": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "04_docker-and-deploy-runtime"
+    },
+    "DEPLOY_RUNTIME_AGE_PRIVATE_KEY": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "10_deploy-authorization"
+    },
+    "GHCR_PULL_TOKEN": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "04_docker-and-deploy-runtime"
+    },
+    "BACKUP_RESTIC_PASSWORD": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "BACKUP_S3_ACCESS_KEY_ID": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "BACKUP_S3_SECRET_ACCESS_KEY": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "13_backup-and-recovery"
+    },
+    "MONITORING_GRAFANA_CLOUD_TOKEN": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "14_observability-and-alerting"
+    },
+    "ANSIBLE_VAULT_PASSWORD": {
+      "kind": "secret",
+      "level": "environment",
+      "introduced_by": "03_host-bootstrap-and-hardening"
+    }
+  },
+  "forbidden_in": {
+    ".github/workflows/deploy-app.yml": [
+      "ANSIBLE_SSH_PRIVATE_KEY",
+      "VPS_INITIAL_ACCESS_PASSWORD",
+      "ANSIBLE_VAULT_PASSWORD"
+    ]
+  }
+}

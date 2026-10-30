@@ -110,7 +110,7 @@ App run: waits for the central run and reports its result
 | NFR-14 | Security | Least privilege | Deploy identity is not root-equivalent and can run only the two deploy scripts; admin and deploy identities and keys are separate |
 | NFR-15 | Security | Supply chain | 100% of deployments by digest; 100% of Production deployments have verified provenance; third-party actions pinned to commit SHAs |
 | NFR-16 | Security | Encryption | Backups encrypted client-side with a per-environment password; HTTP redirects to HTTPS; modern TLS |
-| NFR-17 | Security | Change control | 100% of changes to `apps/**`, `deployment/**`, `roles/**` and `.github/workflows/**` code-owner reviewed; Production deployments and infrastructure changes approved |
+| NFR-17 | Security | Change control | 100% of changes to `apps/**`, `deployment/**`, `roles/**`, `.github/workflows/**`, `.github/CODEOWNERS` and `.github/rulesets/**` code-owner reviewed before merging into protected `main` or `release/*`; both branch patterns require pull requests, approval and required checks and block force-push/deletion; Production deployments and infrastructure changes approved |
 | NFR-18 | Reliability | Idempotency | Second consecutive configure run: 0 changes; unchanged route: 0 rewrites and 0 reloads |
 | NFR-19 | Reliability | Safe change | No SSH hardening applied without a proven independent admin-key login; a failed proxy validation never reloads or breaks another route |
 | NFR-20 | Reliability | Certificate validity | 0 expired certificates; verification flags certificates with fewer than 21 days left |

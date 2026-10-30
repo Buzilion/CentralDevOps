@@ -21,7 +21,7 @@ Make the app run wait for, identify, and accurately report the central run creat
 
 ## Proposed approach
 
-1. Use the dispatch App installation token to query Actions runs in CentralDevOps. Match the exact source `run_id` and `run_attempt` correlation emitted by the central workflow; verify the workflow and `main` ref before associating the run.
+1. Use the dispatch App installation token to query Actions runs in CentralDevOps. Match the exact source `run_id` and `run_attempt` correlation emitted by the central workflow; verify the workflow and that its ref is permitted by the requested Environment before associating the run.
 2. Refresh the short-lived installation token from the supplied App credentials before it expires if polling continues through a long approval wait. Reuse the same source correlation and never redispatch because a polling token expired.
 3. Do not infer identity from creation time, app name, digest, Environment, actor alone, or the newest run. If no unique match exists, fail rather than report another deployment's result.
 4. Poll until the matching central run reaches a terminal conclusion, including an approval wait for Production. Respect the app job's configured runtime; a wait timeout is a failure/unknown result, not success.

@@ -69,8 +69,8 @@ Create exactly two Environments, `Staging` and `Production`, in CentralDevOps an
 
 | Repository | Environment | Required reviewers | Deployment branches |
 |---|---|---|---|
-| CentralDevOps | `Staging` | None (DEP-08) | `main` only (§8.3 #1, DEP-16) |
-| CentralDevOps | `Production` | **Yes**: the repository owner initially (SEC-05); the deployment team replaces or joins them later (SEC-18, open question Q6) | `main` only |
+| CentralDevOps | `Staging` | None (DEP-08) | All branches |
+| CentralDevOps | `Production` | **Yes**: the repository owner initially (SEC-05); the deployment team replaces or joins them later (SEC-18, open question Q6) | Protected `release/*` only |
 | Each app | `Staging` | None | `main` (or release branches) |
 | Each app | `Production` | None by default, so a deployment has exactly one approval, in CentralDevOps (SEC-15) | `main` (or release branches) |
 

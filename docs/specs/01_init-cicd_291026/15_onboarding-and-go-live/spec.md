@@ -109,7 +109,7 @@ Use only `PASS`, `FAIL`, or `BLOCKED`. `PASS` requires dated, sanitized evidence
 | App secrets and platform credentials remain in their designated repositories/scopes. | Review secret names/scopes and canary logs; never print secret values. |
 | Apps use backward-compatible, app-owned migrations. | Review the onboarding contract, manifest release command, and deployed app migration behavior. |
 | Every SEC-16 rotation is rehearsed on Staging without a deployment outage. | Check the dated rotation record for each mandatory credential and successful post-rotation verification. |
-| Production has exactly the intended CentralDevOps reviewer model and remains protected by `main`. | Inspect CentralDevOps and app Environment settings; app Production has no reviewer by default. |
+| Production has exactly the intended CentralDevOps reviewer model and accepts only protected `release/*` refs. | Inspect CentralDevOps and app Environment settings; app Production has no reviewer by default. |
 | Production go-live is blocked unless gates 1-5 are all `PASS`. | Review the go-live record and confirm the deployment approval path cannot bypass the Production Environment. |
 
 ## Error Behavior

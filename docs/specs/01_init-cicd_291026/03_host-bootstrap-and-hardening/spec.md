@@ -102,7 +102,7 @@ Do not pass either secret as a workflow dispatch input, command-line argument, g
 | `target_host` | Required host alias; exact-match validated against the selected inventory before any SSH connection. |
 
 - No profile, inventory path, SSH username, address, or password is operator-selectable.
-- Require the workflow ref to be `refs/heads/main`; reject other refs before the Environment-bound job or any SSH connection.
+- Require the workflow ref to be permitted by the selected Environment: any branch for `Staging`, and `release/*` only for `Production`. Reject an invalid Environment/ref combination before the Environment-bound job or any SSH connection.
 - Bind the credential-using job to `environment: ${{ inputs.target_environment }}` so Production waits for its required approval before secrets are available. The preflight job has no Environment association; it uses only the fixed input-to-inventory mapping committed in workflow/repository code. Before SSH, the credential-using job fails unless `ANSIBLE_INVENTORY_PATH` for its selected Environment equals the mapped path.
 - Make the credential-using job depend on successful preflight and skip it on any failed or invalid preflight result. It checks out the same reviewed commit and installs the exact pinned Ansible dependencies on its own runner before SSH; do not assume jobs share a workspace or installed tools.
 - Use `permissions: contents: read` only, pinned checkout action, pinned Ansible/collections, and a supported Ubuntu runner. Do not grant `actions: write` or use `GITHUB_TOKEN` to remove secrets.

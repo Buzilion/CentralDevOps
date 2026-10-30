@@ -21,7 +21,7 @@ Verification diagnoses state; it never remediates it. Fix a failed check through
 
 - Do not implement or run this spec until every task in `04_docker-and-deploy-runtime/checklist.md` is complete and the disposable-host evidence is recorded. Spec 04 itself depends on the completed bootstrap and hardening proof from spec 03.
 - The workflow rejects the deployment-dispatch GitHub App identity established by spec 02. Do not guess its actor ID or substitute a placeholder. The workflow cannot be enabled for use until this identity is proven.
-- Infrastructure workflows run from the reviewed `main` branch, use the selected Environment's fixed inventory, and bind the credential-using job to that same GitHub Environment. Production's configured Environment protection applies before its credentials are available, even though verification is read-only.
+- Infrastructure workflows use the selected Environment's branch policy (any branch for `Staging`, `release/*` only for `Production`), use that Environment's fixed inventory, and bind the credential-using job to the same GitHub Environment. Production's configured Environment protection applies before its credentials are available, even though verification is read-only.
 - Verification connects as `cdo-admin` using the selected Environment's `ANSIBLE_SSH_PRIVATE_KEY` and the committed, strict host-key pin. It does not use `DEPLOY_SSH_PRIVATE_KEY`, `GHCR_PULL_TOKEN`, backup credentials, or monitoring credentials from GitHub Actions.
 - Use inventory role/group membership to decide which role checks apply to a host. Do not infer roles from hostnames or silently skip a check for a role assigned to that host.
 - `INF-06` names checks owned by later role specs. At this spec's close, checks for roles not yet delivered are explicitly deferred; they become mandatory as those roles are added. Do not add placeholder roles or claim that a deferred check passed.
@@ -30,7 +30,7 @@ Verification diagnoses state; it never remediates it. Fix a failed check through
 
 | ID | Statement | Source |
 |---|---|---|
-| HV-01 | Infrastructure verification is manual-only, runs from CentralDevOps `main`, and rejects the dispatch App actor before the Environment-bound job or any SSH connection starts. | INF-14; SEC-14 |
+| HV-01 | Infrastructure verification is manual-only, runs from a ref allowed by its selected CentralDevOps Environment, and rejects the dispatch App actor before the Environment-bound job or any SSH connection starts. `Staging` accepts any branch; `Production` accepts only `release/*`. | INF-14; SEC-14 |
 | HV-02 | The workflow accepts only `Staging` or `Production` and an optional exact host/group limit. It derives the inventory from the selected Environment. An empty limit means all hosts in that Environment; arbitrary Ansible patterns, CLI options, and cross-Environment targets are rejected before secrets or SSH are used. | INF-06, INF-08 |
 | HV-03 | The credential-using job is bound to the selected GitHub Environment, requires its protections, and uses only that Environment's admin SSH key. Permissions and pinned actions follow the repository's least-privilege workflow rules. | INF-09, INF-14, INF-15; SEC-07, SEC-14 |
 | HV-04 | Verification is read-only. It makes no persistent host changes, runs no configuration/remediation tasks, and does not treat Ansible check mode as proof of read-only behavior. Temporary Ansible module data is cleaned up. | INF-06 |
@@ -67,7 +67,7 @@ There is no dry-run input: verification is always read-only. Do not accept an in
 
 The workflow must:
 
-1. Use a secret-free preflight job to require `refs/heads/main`, reject the spec-02 dispatch App actor, validate the exact Environment value, and resolve the target against the fixed inventory for that Environment.
+1. Use a secret-free preflight job to validate that the workflow ref is allowed by the exact Environment value, reject the spec-02 dispatch App actor, and resolve the target against the fixed inventory for that Environment.
 2. Reject a missing/empty inventory, a malformed or unknown target, and any target found only in the other Environment before the credential-using job starts. Reuse the inventory/target resolver established by spec 04, or extract a shared helper without changing its tested configure behavior.
 3. Pass validated values through environment variables. Do not interpolate dispatch inputs into shell commands or pass unvalidated values to Ansible.
 4. Bind the verification job to the selected GitHub Environment and require successful preflight. Confirm any existing `ANSIBLE_INVENTORY_PATH` Environment variable matches the trusted Environment-to-inventory mapping; never treat that variable as an operator-controlled source of truth.
@@ -160,7 +160,7 @@ Create `docs/runbooks/verify-vps.md`. It must explain:
 ## Testing strategy
 
 - Test the secret-free target resolver for both fixed inventories: exact host, exact group, full Environment, malformed value, unknown value, cross-Environment value, empty inventory, and invalid Environment. Confirm invalid cases do not invoke Ansible or SSH.
-- Test workflow rejection for a non-`main` ref and the proven dispatch App actor; inspect Environment binding and least-privilege permissions.
+- Test that a non-main Staging ref is accepted, a Production ref outside `release/*` is rejected, and the proven dispatch App actor is rejected; inspect Environment binding and least-privilege permissions.
 - Run workflow lint, the repository naming/secrets checks, `ansible-inventory --list`, `ansible-playbook --syntax-check`, `ansible-lint`, and focused verifier unit tests.
 - Test every current role check with passing and failing fixtures. Confirm a deliberately modified deploy script, an invalid sudoers rule, an exposed Docker listener, and a missing/incorrect network fail.
 - On a disposable VPS only, run the verifier and compare persistent package, service, account, firewall, network, and checked-file state before/after. Verify that every independent result is emitted and the run exits nonzero after a controlled failure; restore any test-only tampering before closing the task.

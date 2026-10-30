@@ -1,17 +1,17 @@
-# Task 5: Main branch ruleset
+# Task 5: Protected branches ruleset
 
 | Item | Value |
 |---|---|
 | Spec | `docs/specs/01_init-cicd_291026/01_foundation-and-access/spec.md` |
-| Depends on | Task 1 (plan probe passed), Task 2 (CODEOWNERS on `main`), Task 4 (check names exist) |
+| Depends on | Task 1 (plan probe passed), Task 2 (CODEOWNERS coverage), Task 4 (check names exist) |
 
 ## Goal
 
-Enforce review and checks on `main` with a repository ruleset committed as `.github/rulesets/main.json` and applied with `gh api`.
+Enforce the same review and checks on `main` and `release/*` with the repository ruleset committed as `.github/rulesets/main.json` and applied with `gh api`.
 
 ## Context
 
-CODEOWNERS and lint do nothing until the default branch requires them. The ruleset must be applied only after the check names have run at least once, otherwise pull requests wait forever for a check GitHub has never seen. A sole owner cannot approve their own pull request (Decision D6), so this task also settles the bypass question.
+CODEOWNERS and lint do nothing until protected branches require them. The ruleset must be applied only after the check names have run at least once, otherwise pull requests wait forever for a check GitHub has never seen. A sole owner cannot approve their own pull request (Decision D6), so this task also settles the bypass question.
 
 ## Relevant files or references
 
@@ -20,15 +20,15 @@ CODEOWNERS and lint do nothing until the default branch requires them. The rules
 
 ## Proposed approach
 
-1. Write the ruleset payload: target `branch`, include `refs/heads/main`, enforcement `active`, rules `deletion`, `non_fast_forward`, `pull_request` (1 approval, code-owner review, dismiss stale reviews, require last-push approval), `required_status_checks` (`workflow-lint`, `naming-and-secrets`, strict).
+1. Write the ruleset payload: target `branch`, include both `refs/heads/main` and `refs/heads/release/*`, enforcement `active`, rules `deletion`, `non_fast_forward`, `pull_request` (1 approval, code-owner review, dismiss stale reviews, require last-push approval), `required_status_checks` (`workflow-lint`, `naming-and-secrets`, strict). Apply identical rules to both ref patterns.
 2. Ask the owner whether a second reviewer exists. If not, add the owner as a bypass actor with mode `pull_request` and record the exception and its removal condition in the runbook. Do not add any other bypass.
 3. Apply with `gh api -X POST repos/Buzilion/CentralDevOps/rulesets --input .github/rulesets/main.json`; record the ruleset id in the runbook for updates (`PUT`).
-4. Test on a scratch branch: a direct push to `main` is refused; a pull request touching `.github/workflows/` cannot merge without a code-owner review; a pull request with a failing check cannot merge. Delete the scratch branch afterwards.
+4. Against each target pattern, test that direct pushes, force-pushes and deletion are refused; a pull request touching `.github/workflows/` cannot merge without code-owner review; and a pull request with a failing required check cannot merge. Delete any scratch branches after the tests.
 
 ## Acceptance criteria
 
-- The ruleset is active on `main` and matches the committed JSON.
-- A direct push, force push and branch deletion on `main` are refused.
+- The ruleset is active and matches the committed JSON; its target patterns include `refs/heads/main` and `refs/heads/release/*`.
+- Direct pushes, force-pushes and branch deletion are refused for both `main` and `release/*`.
 - A pull request touching a protected path cannot merge without code-owner review (or the recorded bypass, if D6 applies).
 - A pull request with a failing `workflow-lint` or `naming-and-secrets` check cannot merge.
 - The runbook documents the apply and update commands and any bypass exception.
@@ -40,10 +40,11 @@ SEC-13, SEC-14, NFR-17; F-03, F-04.
 ## Verify
 
 ```powershell
-gh api repos/Buzilion/CentralDevOps/rulesets --jq "[.[] | {name, enforcement}]"
-# expect the main ruleset with enforcement "active"
+gh api repos/Buzilion/CentralDevOps/rulesets --jq "[.[] | {name, enforcement, include: .conditions.ref_name.include}]"
+# expect an active ruleset whose include patterns contain refs/heads/main and refs/heads/release/*
 git push origin HEAD:main
 # from a scratch clone with no bypass: expect "protected branch / repository rule violations"
+# Repeat the push, PR-review, required-check and deletion tests against a scratch release/* branch.
 gh pr merge <scratch-pr-with-failing-check> --squash
 # expect refusal while checks fail
 ```
