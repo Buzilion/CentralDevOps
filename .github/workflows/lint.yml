@@ -1,0 +1,73 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download, verify, and run actionlint
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ACTIONLINT_URL: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+        run: |
+          set -euo pipefail
+          trap 'rm -rf -- "$ACTIONLINT_ARCHIVE" actionlint' EXIT
+          rm -rf -- "$ACTIONLINT_ARCHIVE" actionlint
+          curl --fail --location --retry 3 --retry-all-errors --silent --show-error \
+            --output "$ACTIONLINT_ARCHIVE" "$ACTIONLINT_URL"
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$ACTIONLINT_ARCHIVE" |
+            sha256sum --check --strict
+          tar --extract --gzip --file "$ACTIONLINT_ARCHIVE" actionlint
+          ./actionlint
+
+      - name: Install and run zizmor
+        env:
+          ZIZMOR_VERSION: 1.31.1
+          ZIZMOR_VENV_DIR: .zizmor-venv
+        run: |
+          set -euo pipefail
+          trap 'rm -rf -- "$ZIZMOR_VENV_DIR"' EXIT
+          rm -rf -- "$ZIZMOR_VENV_DIR"
+          python3 -m venv "$ZIZMOR_VENV_DIR"
+          "$ZIZMOR_VENV_DIR/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            "zizmor==$ZIZMOR_VERSION"
+          "$ZIZMOR_VENV_DIR/bin/zizmor" --no-ignores .github/
+
+  naming-and-secrets:
+    name: naming-and-secrets
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check workflow names and secrets
+        run: python3 deployment/tools/check-github-names.py
+
+      - name: Run name checker unit tests
+        run: python3 -m unittest discover -s deployment/tools/tests

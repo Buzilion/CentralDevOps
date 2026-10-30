@@ -4,7 +4,7 @@
 |---|---|
 | Spec | `docs/specs/01_init-cicd_291026/11_deploy-execution-and-rollback/spec.md` |
 | Depends on | Spec 10's authorization and preflight checklist |
-| Needs | Reviewed `main`, CentralDevOps `Staging` and `Production` Environments, and their protection rules |
+| Needs | A CentralDevOps ref permitted by the selected Environment, `Staging` and `Production` Environments, and their protection rules |
 | Summary | Write `summaries/task-1-summary.md` when this task closes |
 
 ## Goal
@@ -24,7 +24,7 @@ Add the privileged deployment job after authorization without allowing the raw d
 1. Make the `deploy` job depend on successful authorization/preflight and consume the resolved app, Environment, host and digest outputs from spec 10. Do not promote raw dispatch inputs to trusted outputs.
 2. Set the job's Environment from the validated Environment output. Keep all Environment-secret use, bundle decryption and SSH steps inside this job so the Production approval gate precedes them.
 3. Keep Staging free of manual approval and require the CentralDevOps `Production` Environment protection for Production. Do not revalidate the already-verified source identity token after a human approval delay.
-4. Restrict execution to the reviewed CentralDevOps `main` workflow revision and the permissions required by checkout, deployment and the sanitized result handoff.
+4. Restrict execution to a CentralDevOps workflow ref permitted by the selected Environment (any branch for `Staging`, `release/*` only for `Production`) and the permissions required by checkout, deployment and the sanitized result handoff.
 5. Use a distinct concurrency group for each resolved app/Environment pair with `cancel-in-progress: false`. Do not share one group across all apps in an Environment.
 6. Preserve explicit failure states for authorization, approval, deploy and cancellation; never report an approval-waiting or cancelled run as a deployment success.
 

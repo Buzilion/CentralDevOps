@@ -58,11 +58,11 @@ Create `.github/workflows/configure-vps.yml` with `workflow_dispatch` only:
 
 The workflow has top-level `permissions: {}` and grants only the permissions needed to check out reviewed code. Pin actions to reviewed commit SHAs, set `persist-credentials: false`, pass inputs through environment variables, and never interpolate dispatch input directly into `run:`.
 
-The privileged job is restricted to `refs/heads/main` and is gated on the numeric actor ID proven by spec 02. Reject the dispatch App before the Environment-bound job starts; do not guess or silently omit the actor check. Bind the job to the exact selected GitHub Environment so Production approval precedes credential use.
+The privileged job is gated on the numeric actor ID proven by spec 02 and the selected Environment's branch policy: any branch for `Staging`, and `release/*` only for `Production`. Reject an invalid Environment/ref combination and the dispatch App before the Environment-bound job starts; do not guess or silently omit the actor check. Bind the job to the exact selected GitHub Environment so Production approval precedes credential use.
 
 Before any SSH operation, run a local preflight that:
 
-1. Confirms the workflow ref is `refs/heads/main`, the actor is not the dispatch App, and all choice inputs are exact allowed values.
+1. Confirms the workflow ref is allowed by `target_environment`, the actor is not the dispatch App, and all choice inputs are exact allowed values.
 2. Selects the inventory exclusively from `target_environment`, parses its hosts and groups, and confirms an optional `limit` exactly names one host or group in that inventory.
 3. Rejects patterns, option-like values, separators, whitespace, and any host/group not in the selected inventory. Do not pass an unvalidated input to Ansible.
 4. Confirms every role selected by the profile is installed and the inventory contains the required Docker network and deploy-key facts.
@@ -153,7 +153,7 @@ Update the Ansible requirements/configuration established by spec 03 only as nee
 | Situation | Behavior |
 |---|---|
 | Spec 03 checklist or disposable-host hardening proof is incomplete. | Do not implement or run configure against any VPS; report the prerequisite as blocked. |
-| The workflow is not on `main`, the caller is the dispatch App, or an input is invalid. | Fail/skip before Environment credentials and before any connection; report the failed preflight check without printing secrets. |
+| The workflow ref is not allowed by `target_environment`, the caller is the dispatch App, or an input is invalid. | Fail/skip before Environment credentials and before any connection; report the failed preflight check without printing secrets. |
 | Limit is unknown, malformed, or belongs to the other Environment. | Reject before SSH; never fall back to the full inventory. |
 | A profile references a role not yet delivered or an invalid/missing inventory fact. | Fail preflight with the exact missing role/fact; do not apply a partial profile. |
 | Docker package source/version is unavailable or signature validation fails. | Stop the role and leave the prior Docker installation unchanged; do not fall back to an unpinned installer. |

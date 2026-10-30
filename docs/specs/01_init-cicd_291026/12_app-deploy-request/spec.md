@@ -73,7 +73,7 @@ The OIDC audience is exactly `centraldevops-deploy:` followed by the lowercase h
 UTF-8(target_environment) || 0x7c || UTF-8(image_ref) || 0x7c || sealed_bundle_bytes
 ```
 
-Hash the exact sealed bytes before base64 transport. Do not normalize, re-encode, or append a newline. The central verifier recomputes this same value. The dispatch-only GitHub App installation token independently authorizes a `workflow_dispatch` of CentralDevOps `deploy-app.yml` on `main`; the app name is not sent.
+Hash the exact sealed bytes before base64 transport. Do not normalize, re-encode, or append a newline. The central verifier recomputes this same value. The dispatch-only GitHub App installation token independently authorizes a `workflow_dispatch` of CentralDevOps `deploy-app.yml` on a ref permitted by the requested Environment (`Staging`: any branch; `Production`: `release/*` only); the app name is not sent.
 
 For unambiguous polling, dispatch metadata includes the source `run_id` and `run_attempt` from the GitHub run context. These values are correlation metadata only: spec 10 must compare them with the OIDC claims before authorization, and the OIDC token remains the identity proof. The central run must expose a sanitized correlation value that the action can match through the Actions API; the action must not guess by time, app, Environment, or digest alone.
 

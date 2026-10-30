@@ -4,7 +4,7 @@ Implementation is blocked until `10_deploy-authorization/checklist.md` and `11_d
 
 - [ ] Task 1: request-action-contract - define the shared action interface, outputs, and fail-fast validation
 - [ ] Task 2: sealed-bundle-and-size-guard - package and age-seal the three request files, handle key overlap, and enforce the payload decision
-- [ ] Task 3: oidc-bound-dispatch - bind the exact request, create the dispatch App token, and dispatch CentralDevOps on `main`
+- [ ] Task 3: oidc-bound-dispatch - bind the exact request, create the dispatch App token, and dispatch CentralDevOps on a ref allowed by the requested Environment
 - [ ] Task 4: central-run-polling - correlate the central run, propagate its result, and report a sanitized run URL
 - [ ] Task 5: app-deploy-workflow - render runtime configuration safely and add the two-input manual app `deploy.yml`
 - [ ] Task 6: release-and-rollback-runbook - document build, Staging verification, Production approval, and rollback by digest

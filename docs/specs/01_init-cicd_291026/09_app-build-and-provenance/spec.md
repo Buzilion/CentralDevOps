@@ -16,7 +16,7 @@ Define and prove the app-side manual `build.yml` pattern: select a source ref, t
 ## Context
 
 - Application source, tests, Dockerfile, and app workflows belong to each app repository. CentralDevOps has no app repository or app-side workflow today, so do not add `.github/workflows/build.yml` to CentralDevOps. The durable operator contract will live in `docs/runbooks/app-build-and-provenance.md`; the end-to-end workflow proof uses a disposable app repository.
-- Spec 01 establishes the protected CentralDevOps `main` branch, workflow linting, and action-pinning conventions. Do not create the proof repository or publish an image until its checklist is complete.
+- Spec 01 establishes the protected CentralDevOps `main` and `release/*` branches, workflow linting, and action-pinning conventions. Do not create the proof repository or publish an image until its checklist is complete.
 - Keep the workflow definition ref (`refs/heads/main`) distinct from the operator-selected `source_ref`. Resolve `source_ref` once to a full commit SHA and use that same SHA for tests, image build, metadata, and provenance so a moving branch cannot change the tested source.
 - The app workflow derives its GHCR image name from the app repository and must agree with the reviewed registry image in spec 06. No workflow input may choose the image repository or a deployment target.
 - The disposable proof uses a synthetic expected image name only; it must not add a production app entry to the CentralDevOps registry.

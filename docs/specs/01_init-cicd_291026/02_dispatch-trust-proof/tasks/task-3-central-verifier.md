@@ -18,13 +18,13 @@ Authorization must happen before any Environment or secret is used, so the verif
 
 - CentralDevOps: `.github/workflows/dispatch-proof.yml`
 - `docs/specs/01_init-cicd_291026/02_dispatch-trust-proof/spec.md`
-- `.github/rulesets/main.json` and the spec 01 runbook for branch and workflow controls
+- `.github/rulesets/main.json` and the spec 01 runbook for `main` and `release/*` branch and workflow controls
 - `docs/notes/requirements/02_init-cicd_291026/v5/centraldevops-complete-infrastructure-design.md` §§8.1–8.2
 
 ## Proposed approach
 
 1. Add a separate `workflow_dispatch` proof workflow, with minimal top-level and per-job permissions and no `pull_request_target` trigger.
-2. In an `authorize` job with no Environment, reject unless the CentralDevOps run ref is exactly `refs/heads/main`; do not produce an authorized output for any other ref.
+2. In an `authorize` job with no Environment, reject a CentralDevOps ref that is not permitted by the requested Environment: `Staging` accepts any branch, while `Production` accepts only `release/*`. Do not produce an authorized output for an invalid Environment/ref combination.
 3. Validate the OIDC JWT signature against GitHub's published JWKS and check issuer, expiry, audience, required claims, expected repository, `.github/workflows/deploy.yml`, allowed ref, source Environment, and payload-to-audience binding.
 4. Recompute the audience from the exact sealed-bundle bytes after decoding the dispatched base64 value once. Reject malformed encoding and any mismatch.
 5. Derive the source app from the verified `repository` claim using the spec's inline test fixture; do not accept an app name or repository as a dispatch input.
@@ -38,7 +38,7 @@ Authorization must happen before any Environment or secret is used, so the verif
 - A valid dispatch from the throwaway repository passes both independent checks.
 - The authorization job has no Environment and grants no secret access.
 - The Environment-bound job depends on successful authorization and selects only the verified matching Environment.
-- The workflow rejects CentralDevOps runs from refs other than `main`.
+- A non-main Staging run is accepted, while a Production run outside `release/*` is rejected before the Environment-bound job.
 - No token or bundle content appears in logs, outputs, or artifacts.
 
 ## Source reference
@@ -49,7 +49,7 @@ DEP-02, DEP-06, DEP-08, DEP-16, DEP-20, SEC-10; spec requirements T-03 to T-06.
 
 - Run the positive dispatch and verify the central job's non-sensitive claims match the expected repository, workflow, ref, Environment, run ID, and attempt.
 - Confirm GitHub run details show the downstream job associated with the matching CentralDevOps Environment and that no Environment secrets were accessed.
-- Confirm the verifier ran on CentralDevOps `main` and that no deployment or infrastructure job was invoked.
+- Confirm the verifier ran on the non-main Staging-allowed CentralDevOps ref and that no deployment or infrastructure job was invoked.
 - Inspect all run outputs and artifacts for JWT or bundle leakage.
 
 ## Out of scope

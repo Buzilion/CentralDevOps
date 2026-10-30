@@ -3,5 +3,5 @@
 - [ ] Task 2: readme-and-codeowners - README with the plan assumption and repository map, CODEOWNERS for protected paths
 - [ ] Task 3: name-checker - Catalog-driven checker for names, forbidden references and private key material, with unit tests
 - [ ] Task 4: lint-workflow - `lint.yml` with `workflow-lint` and `naming-and-secrets` jobs, pinned and least-privilege
-- [ ] Task 5: main-protection - Ruleset requiring code-owner review and the two checks on `main`
+- [ ] Task 5: main-protection - Ruleset requiring the same code-owner review, approvals and checks on `main` and `release/*`
 - [ ] Task 6: foundation-acceptance - Audit all requirements on the real repository and record the evidence

@@ -153,7 +153,7 @@ The deployment bundle contains only declared Compose inputs. Tests must also pas
 ### CI and downstream call contract
 
 - Extend the existing `.github/workflows/lint.yml` with a read-only `registry-policy` job on pull requests and pushes to `main`. It validates schemas, registry/inventory integrity, capacity, Compose fixtures and tool tests. It needs no GitHub secrets and makes no host connection.
-- Add the exact `registry-policy` status context to `.github/rulesets/main.json` and the apply/audit procedure in `docs/runbooks/github-environments.md`; a failing validator must block merge.
+- Add the exact `registry-policy` status context to `.github/rulesets/main.json` (which applies to both `main` and `release/*`) and the apply/audit procedure in `docs/runbooks/github-environments.md`; a failing validator must block merge to either branch.
 - The CI job passes when there are no production registry entries, but always runs schema and validator fixtures.
 - App pull-request CI invokes `validate-registry.py --manifest-only` using a pinned CentralDevOps revision; deployment preflight validates the manifest again against the selected registry entry.
 - The composite action at `.github/actions/validate-app-manifest` accepts one `manifest-path` relative to `GITHUB_WORKSPACE`, rejects paths that resolve outside the workspace, calls the same pinned `--manifest-only` validator, and needs no secrets or registry access. Callers pin it to a reviewed 40-character commit SHA and pass the path through an environment variable, not direct shell interpolation.
@@ -187,7 +187,7 @@ Do not add real `apps/<app>/<environment>.yml` files, app manifests, a Docker ro
 | D3 | `private_ip` is schema-valid, but v1 deployment supports only `docker_edge` and rejects app-published ports. | Treat schema acceptance as deployment support | RTE-02 requires the forward-compatible schema; the current contract and REG-05 prohibit app-published ports, and RTE-13 is not delivered. | Yes |
 | D4 | Each placement group resolves to exactly one host in v1; capacity and private port uniqueness use the resolved app host. | Allocate one registry entry across a host set | Multi-host placement is REG-13 and is not part of this release. | Yes |
 | D5 | Inventory `capacity_budget_mib` is authoritative; memory values are normalized to bytes for comparisons. | Recompute a budget from nominal VPS size or hard-code examples | Host capacity must reflect the measured platform reserve recorded by spec 03. | Yes |
-| D6 | The CI status is named `registry-policy` and is required by the existing `main` ruleset. | Run validation in an optional job | An optional failing check does not enforce REG-01, REG-04 or REG-07 before merge. | Yes |
+| D6 | The CI status is named `registry-policy` and is required by the shared `main` ruleset, which protects both `main` and `release/*`. | Run validation in an optional job | An optional failing check does not enforce REG-01, REG-04 or REG-07 before merge. | Yes |
 | D7 | No real app registry record is seeded by this spec. | Copy illustrative app data from a design example | No app-specific placement, domains, GHCR repository or limits have been approved here. | Yes |
 | D8 | Named volumes remain scoped to the derived Compose project; external or cross-project volume names are rejected. | Allow app-selected shared volumes | An app must not gain access to another app's persistent data through a shared Docker volume. | Yes |
 

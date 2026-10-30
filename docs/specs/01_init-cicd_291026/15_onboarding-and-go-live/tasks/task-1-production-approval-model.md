@@ -22,7 +22,7 @@ Resolve PRD Q6 and ensure the Production approval handoff follows the chosen SEC
 
 1. Keep the repository owner as the required reviewer of the CentralDevOps `Production` Environment while no deployment team is assigned.
 2. When a deployment team is assigned, replace the owner with that team as the required reviewer. The selected default is one approval by the team; do not retain the owner alongside the team as a second default approval.
-3. Keep the CentralDevOps Production deployment branch restriction on `main`. Keep app Production Environments without reviewers by default so the central Environment remains the single approval gate.
+3. Keep the CentralDevOps Production deployment branch restriction on `release/*`. Keep app Production Environments without reviewers by default so the central Environment remains the single approval gate.
 4. Record the reviewer model and the date/settings evidence without recording private Environment data. If a deployment team is not yet assigned, record the handoff as pending and leave the owner configured.
 5. Align the operator instructions in Task 2 and the reviewer field in the go-live record with the actual configuration.
 
@@ -30,7 +30,7 @@ Resolve PRD Q6 and ensure the Production approval handoff follows the chosen SEC
 
 - PRD Q6 is resolved as documented in spec decision D1.
 - The CentralDevOps Production Environment has the owner as its reviewer until a deployment team is assigned; after assignment, the team replaces the owner.
-- The Production branch restriction remains `main`, and app Production does not add a reviewer by default.
+- The CentralDevOps Production branch restriction is `release/*`, and app Production does not add a reviewer by default.
 - The task does not claim SEC-18's post-assignment state is configured if no team has been assigned.
 - The configuration evidence contains no secret values or private Environment data.
 

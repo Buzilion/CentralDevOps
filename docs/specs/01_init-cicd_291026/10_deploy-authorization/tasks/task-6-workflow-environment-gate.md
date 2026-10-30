@@ -47,7 +47,7 @@ DEP-02, DEP-06, DEP-08, DEP-16; spec 12 D5; requirements A-02, A-04, A-09, A-10 
 
 - Run actionlint, zizmor and the naming/secrets checker.
 - Review a successful synthetic Staging run and a rejected request; verify the job graph and sanitized outputs.
-- Confirm a non-main dispatch ends in failure without checkout or Environment selection.
+- Confirm a non-main Staging dispatch can reach its Environment gate, while a Production dispatch outside `release/*` fails before Environment selection.
 - Confirm a Production run reaches the approval wait only after `authorize` completes. Use a clock-controlled test to show preflight does not revalidate the expired token.
 
 ## Out of scope

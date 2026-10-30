@@ -23,7 +23,7 @@ Create the manual `verify-vps.yml` workflow and reject invalid callers or target
 
 1. Confirm all spec-04 checklist items and disposable-host evidence are complete. Obtain the dispatch App actor ID from spec 02; do not guess or use a placeholder.
 2. Define only `workflow_dispatch` inputs: required `target_environment` (`Staging` or `Production`) and optional `limit`.
-3. Use a secret-free preflight to require `refs/heads/main`, reject the App actor, map the exact Environment to its fixed inventory, and validate an optional exact host/group. Empty `limit` targets every host in that inventory.
+3. Use a secret-free preflight to verify the workflow ref is allowed by the selected Environment (any branch for `Staging`, `release/*` only for `Production`), reject the App actor, map the exact Environment to its fixed inventory, and validate an optional exact host/group. Empty `limit` targets every host in that inventory.
 4. Reject malformed, unknown, empty-inventory, or cross-Environment targets before the Environment-bound job. Never accept an inventory path, Ansible pattern, extra CLI argument, host address, or credential as input.
 5. Pass dispatch values through environment variables. Use least-privilege permissions, pinned actions, and `persist-credentials: false`.
 6. Bind the verification job to the selected Environment; use only `ANSIBLE_SSH_PRIVATE_KEY` and strict host-key checking. Confirm any configured `ANSIBLE_INVENTORY_PATH` matches the fixed mapping.
@@ -31,7 +31,7 @@ Create the manual `verify-vps.yml` workflow and reject invalid callers or target
 
 ## Acceptance criteria
 
-- The workflow is manual-only and rejects non-`main` refs and the dispatch App actor before the credential-using job.
+- The workflow is manual-only, accepts any Staging branch, rejects Production refs outside `release/*`, and rejects the dispatch App actor before the credential-using job.
 - Only `Staging` and `Production` are accepted, and the selected Environment determines the inventory and credentials.
 - Empty target means the complete selected inventory; a non-empty target exactly matches one host or group in it.
 - Unknown, malformed, cross-Environment, and empty-inventory cases fail before Ansible/SSH or secret use.

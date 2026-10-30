@@ -24,7 +24,7 @@ Create the on-demand `configure-vps.yml` workflow with least privilege and make 
 1. Require the completed spec 03 checklist and the spec 02 actor identity evidence before implementation. Do not guess the actor ID.
 2. Add only `workflow_dispatch` inputs: exact Environment and profile choices, optional single limit, and a `check_mode` boolean defaulting to `true`.
 3. Set `permissions: {}` at workflow scope. Grant only `contents: read` where checkout is needed; pin third-party actions to reviewed full commit SHAs and disable persisted checkout credentials.
-4. Gate the privileged job on `refs/heads/main` and a caller actor ID different from the proven dispatch App ID. Associate the job with the exact selected GitHub Environment so Production approval precedes credential use.
+4. Gate the privileged job on a caller actor ID different from the proven dispatch App ID and a workflow ref allowed by the selected Environment: any branch for `Staging`, and `release/*` for `Production`. Associate the job with the exact selected GitHub Environment so Production approval precedes credential use.
 5. Pass workflow inputs through environment variables; never interpolate `${{ inputs.* }}` or event fields directly into shell.
 6. Preflight the selected inventory and exact host/group limit before invoking Ansible. Prevent arbitrary Ansible limit syntax or CLI argument injection.
 7. Use `ANSIBLE_SSH_PRIVATE_KEY` for admin access and `GHCR_PULL_TOKEN` for host provisioning. Do not reference `DEPLOY_SSH_PRIVATE_KEY` from this workflow.
@@ -33,7 +33,7 @@ Create the on-demand `configure-vps.yml` workflow with least privilege and make 
 ## Acceptance criteria
 
 - Workflow is manual-only, least-privilege, pinned, and has no direct shell interpolation of untrusted values.
-- A non-main dispatch and the dispatch App actor cannot start the privileged Environment-bound job.
+- A ref not allowed by the selected Environment and the dispatch App actor cannot start the privileged Environment-bound job.
 - Invalid choices, malformed/unknown limits and cross-Environment limits fail before SSH.
 - The inventory path is derived from `target_environment`, never accepted as an input.
 - Tests cover each rejection and demonstrate no Ansible/SSH invocation on invalid requests.

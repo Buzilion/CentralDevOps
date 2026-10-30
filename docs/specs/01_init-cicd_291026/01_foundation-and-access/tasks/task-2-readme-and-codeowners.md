@@ -11,7 +11,7 @@ Replace the one-line README with the repository entry point, including the GitHu
 
 ## Context
 
-`README.md` currently has a title and one sentence. SEC-17 requires a note on the plan and visibility assumption so a later change (for example making the repository private on the Free plan) is noticed. SEC-13 requires code-owner review on `apps/**`, `deployment/**`, `roles/**` and `.github/workflows/**`.
+`README.md` currently has a title and one sentence. SEC-17 requires a note on the plan and visibility assumption so a later change (for example making the repository private on the Free plan) is noticed. SEC-13 requires code-owner review on `apps/**`, `deployment/**`, `roles/**`, `.github/workflows/**`, `.github/CODEOWNERS` and `.github/rulesets/**` before merging into protected `main` or `release/*`.
 
 ## Relevant files or references
 

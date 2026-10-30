@@ -11,7 +11,7 @@ Add `.github/workflows/lint.yml` with the jobs `workflow-lint` and `naming-and-s
 
 ## Context
 
-This is the first workflow in the repository and sets the pattern for all later ones: pinned SHAs, empty top-level permissions, minimal per-job permissions, no direct interpolation of inputs into shell. The job names are the status checks that the `main` ruleset (Task 5) requires, so they must not change afterwards.
+This is the first workflow in the repository and sets the pattern for all later ones: pinned SHAs, empty top-level permissions, minimal per-job permissions, no direct interpolation of inputs into shell. The job names are the status checks that the protected-branches ruleset (Task 5) requires on both `main` and `release/*`, so they must not change afterwards.
 
 ## Relevant files or references
 

@@ -51,7 +51,7 @@ After health passes, integrate with spec 07's route entrypoint, run the external
 - Extend the existing `.github/workflows/deploy-app.yml`; spec 10 remains the owner of the `authorize` and preflight stages. The `deploy` job runs only when authorization succeeds and uses the resolved app, Environment, host and digest from that job's outputs.
 - Bind the privileged job to the validated Environment output, not the raw `target_environment` dispatch field. Staging has no manual approval. Production approval is supplied by the CentralDevOps `Production` Environment and must happen before the job reads `DEPLOY_SSH_PRIVATE_KEY` or `DEPLOY_RUNTIME_AGE_PRIVATE_KEY`, decrypts the bundle or opens SSH.
 - Verify the source identity token before the approval wait in spec 10. Do not reject an otherwise authorized request merely because that token expires while a human is deciding whether to approve the Production job.
-- Run the workflow only from reviewed CentralDevOps `main` and check out the workflow revision for that run. Use least-privilege permissions and the matching Environment's credentials only.
+- Run the workflow only from a ref allowed by the selected Environment (any branch for `Staging`, `release/*` only for `Production`) and check out the workflow revision for that run. Use least-privilege permissions and the matching Environment's credentials only.
 - Use a separate workflow concurrency group keyed by the resolved app and Environment, with `cancel-in-progress: false`. Do not use one Environment-wide group: one app's dispatch must not replace another app's pending run. GitHub concurrency is scheduling only; server-side locks remain the correctness control.
 
 ### Restricted host execution and locking

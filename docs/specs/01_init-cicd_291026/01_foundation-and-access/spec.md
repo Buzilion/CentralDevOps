@@ -11,24 +11,24 @@
 
 ## What
 
-Make the CentralDevOps repository safe to build on before any infrastructure or workflow exists. This spec creates the two GitHub Environments with their protection rules, enforces code-owner review and mandatory checks on `main`, and adds an automated lint that rejects unpinned actions, shell injection patterns, badly named or forbidden variables and secrets, and committed private keys. It also records the GitHub plan assumption in the README. Nothing here touches a VPS.
+Make the CentralDevOps repository safe to build on before any infrastructure or workflow exists. This spec creates the two GitHub Environments with their protection rules, enforces matching branch protections, code-owner review and mandatory checks on `main` and `release/*`, and adds an automated lint that rejects unpinned actions, shell injection patterns, badly named or forbidden variables and secrets, and committed private keys. It also records the GitHub plan assumption in the README. Nothing here touches a VPS.
 
 ## Context
 
 - The repository today holds only documentation (`docs/`), the agent skills (`.agents/`) and a one-line `README.md`. There are no workflows, roles, inventories or code. Remote: `https://github.com/Buzilion/CentralDevOps.git`, default branch `main`.
 - Every later spec adds workflows that use Environment secrets (SSH keys, age key, S3 and Grafana credentials). The protection rules and review gates must exist first, otherwise the first privileged workflow runs unprotected.
 - The v5 design (§16 step 1) puts "structure, `ansible.cfg`, inventories, naming standard, CODEOWNERS, registry schema" first. This spec delivers the naming standard enforcement, CODEOWNERS and structure documentation; Ansible files move to spec 03 and the registry schema to spec 06 (see the roadmap).
-- **Plan risk.** The PRD records that Environment secrets and variables work on the current GitHub Free plan. GitHub's documentation states that on Free, Environments can only be configured for **public** repositories; private repositories need Pro or Team. Rulesets and required reviewers have similar plan limits. Task 1 therefore proves the real behavior before anything else is built.
+- **Plan risk.** Task 1 verified that the repository is public and the Buzilion organization is on Free, a supported combination for Environment protection rules. The API now confirms the Production reviewer rule with administrator bypass disabled and the `release/*` policy, plus Staging's unrestricted branch policy. If the repository becomes private, required-reviewer protection requires Enterprise; re-audit before relying on the gate.
 - **Self-approval limit.** GitHub does not let a pull request author approve their own pull request. With a single human owner, "code-owner review required" cannot be satisfied. See Decision D6.
 
 ## Requirements
 
 | ID | Statement | Source |
 |---|---|---|
-| F-01 | CentralDevOps has exactly two Environments, `Staging` and `Production`, and none for any VPS. | SEC-01 |
-| F-02 | `Production` requires approval by the repository owner and accepts runs from `main` only. `Staging` requires no approval and accepts runs from `main` only. Self-review of an approval is permitted while the owner is the sole approver. | SEC-05, v5 §4.1 |
-| F-03 | Changes to `apps/**`, `deployment/**`, `roles/**` and `.github/workflows/**` need code-owner review before they can merge into `main`. `.github/CODEOWNERS` and `.github/rulesets/**` are covered by the same rule. | SEC-13, NFR-17 |
-| F-04 | `main` cannot be force-pushed or deleted, and a pull request needs the `workflow-lint` and `naming-and-secrets` checks to pass. | SEC-13, SEC-14 |
+| F-01 | CentralDevOps has exactly two deployment Environments, `Staging` and `Production`; each targets its corresponding VPS, and no additional Environment is created per VPS. | SEC-01 |
+| F-02 | `Production` requires approval by the repository owner, does not allow administrator bypass, and accepts runs only from protected branches matching `release/*`. `Staging` requires no approval and accepts runs from any branch. Self-review of an approval is permitted while the owner is the sole approver. | SEC-05, v5 §4.1 |
+| F-03 | Changes to `apps/**`, `deployment/**`, `roles/**` and `.github/workflows/**` need code-owner review before merging into `main` or `release/*`. `.github/CODEOWNERS` and `.github/rulesets/**` are covered by the same rule. | SEC-13, NFR-17 |
+| F-04 | `main` and `release/*` branches cannot be force-pushed or deleted. Pull requests into either require one approval, code-owner review and passing `workflow-lint` and `naming-and-secrets` checks. | SEC-13, SEC-14 |
 | F-05 | Every workflow and action under `.github/` pins third-party actions to a 40-character commit SHA, declares explicit least-privilege `permissions`, and never interpolates `github.event` or `inputs` values directly into shell. | SEC-14, NFR-15 |
 | F-06 | Every `secrets.<NAME>` and `vars.<NAME>` referenced under `.github/` matches `^(ANSIBLE\|VPS\|DEPLOY\|GHCR\|APP\|BACKUP\|MONITORING)_[A-Z0-9]+(_[A-Z0-9]+)*$`, does not start with `STAGING_`, `PRODUCTION_` or `GITHUB_`, is not a generic name, and appears in the machine-readable name catalog with the right kind (secret or variable). The only exception is the built-in `secrets.GITHUB_TOKEN`. | SEC-02, NFR-23 |
 | F-07 | A name listed as forbidden for a workflow cannot be referenced by it. Initially `deploy-app.yml` cannot reference `ANSIBLE_SSH_PRIVATE_KEY`, `VPS_INITIAL_ACCESS_PASSWORD` or `ANSIBLE_VAULT_PASSWORD`. | SEC-07, INF-13 |
@@ -44,7 +44,7 @@ Make the CentralDevOps repository safe to build on before any infrastructure or 
 ```text
 .github/
   CODEOWNERS                       # F-03
-  rulesets/main.json               # F-03, F-04: ruleset payload applied with gh api
+  rulesets/main.json               # F-03, F-04: protects main and release/* branches
   workflows/lint.yml               # F-04..F-08: jobs workflow-lint, naming-and-secrets
 deployment/tools/
   check-github-names.py            # F-06, F-07, F-08 (stdlib only)
@@ -63,10 +63,11 @@ No other directory is created. Empty skeleton folders are not added; later specs
 |---|---|---|
 | Required reviewers | none | repository owner (user) |
 | Self-review prevention | n/a | off (sole approver) |
-| Deployment branches | custom policy, branch `main` only | custom policy, branch `main` only |
+| Administrator bypass | not applicable | disabled |
+| Deployment branches | all branches | custom policy, branches matching `release/*` only |
 | Wait timer | none | none |
 
-Ruleset `main` (target branch `refs/heads/main`, enforcement active): block deletion, block non-fast-forward, require pull request with 1 approving review and code-owner review, dismiss stale approvals, require last-push approval, require status checks `workflow-lint` and `naming-and-secrets` with up-to-date branch. Bypass list: empty unless Decision D6 chooses otherwise.
+Ruleset `main` (target patterns `refs/heads/main` and `refs/heads/release/*`, enforcement active): block deletion, block non-fast-forward, require pull requests with 1 approving review and code-owner review, dismiss stale approvals, require last-push approval, and require status checks `workflow-lint` and `naming-and-secrets` with an up-to-date branch. These protections apply equally to both patterns. Bypass list: empty unless Decision D6 chooses otherwise.
 
 ### Name catalog (`deployment/tools/github-names.json`)
 
@@ -115,10 +116,10 @@ Workflow inputs and event fields reach shell only through `env:` variables, neve
 | D1 | Custom checker for names and key material; actionlint and zizmor for everything else. | One custom linter for all rules; gitleaks | actionlint and zizmor already cover pinning, permissions and injection reliably. Only the naming catalog and the forbidden-name rule are specific to this platform. `gitleaks-action` needs a paid license for organizations. | Yes |
 | D2 | Checker is Python 3 standard library only, catalog is JSON. | PyYAML, Node, Bash | `verify-oidc.py` in the design is Python, the runner has Python, and avoiding a YAML dependency keeps the check install-free. | Yes |
 | D3 | No empty skeleton folders. | `.gitkeep` placeholders for every directory in the map | The map is documented in the README; placeholders add noise and are deleted later. | Yes |
-| D4 | Environments are limited to `main` through a custom branch policy, for both `Staging` and `Production`. | Protected-branch policy; no branch limit on `Staging` | An explicit `main` policy does not depend on branch-protection settings and matches `docs/design/variables-and-secrets.md` §2. | Yes |
+| D4 | `Staging` accepts runs from any branch; `Production` accepts only branches matching `release/*`. | Restrict both Environments to `main`; leave Production unrestricted | Staging supports branch-based testing, while Production runs are limited to release branches and remain approval-gated. | Yes |
 | D5 | Settings are applied with `gh api` from the runbook and the ruleset payload is committed under `.github/rulesets/`. | Terraform GitHub provider; manual UI only | One command per setting, reviewable payload, no new tool, repeatable audit. | Yes |
 | D6 | **Assumption:** at least two people can act as code owners. If the owner is the only human, the ruleset keeps `require_code_owner_review` and the owner is added as a pull-request-only bypass actor, recorded in the runbook as a known temporary exception to NFR-17 until a second reviewer exists. | Drop code-owner review; use a second account | Without this, the owner cannot merge any change. A visible, narrow bypass is safer than weakening the rule for everyone. Confirm at review. | Yes |
-| D7 | **Assumption:** `CODEOWNERS` lists the owner handle `@awibowo31_FMI` unless Task 2 finds a team or another handle is the intended owner. | Guess a team name | A wrong owner silently disables the review requirement, so Task 2 checks the file with GitHub's CODEOWNERS error report. | Yes |
+| D7 | **Decision:** `CODEOWNERS` lists the repository owner handle `@aldoawp` unless the organization explicitly designates a team. | Guess a team name | A wrong owner silently disables the review requirement, so Task 2 checks the file with GitHub's CODEOWNERS error report. | Yes |
 | D8 | `Staging` allows self-review and has no reviewers. | Reviewer on `Staging` | The PRD requires no Staging approval (DEP-08). | Yes |
 | D9 | Runbooks live in `docs/runbooks/`. | `docs/design/`, `docs/notes/` | `docs/design/` holds standards and `docs/notes/` holds evolving source material. Runbooks are operated procedures. | Yes |
 
@@ -143,16 +144,16 @@ SHA pins and checksums are fixed at implementation time. Re-check the versions t
 | No workflow step uses an unpinned third-party action. | `zizmor` in `workflow-lint`; negative fixture in Task 4. |
 | `deploy-app.yml` can never read the admin key, the provider initial password or the Vault password. | Rule `F01`; unit test with a fixture workflow. |
 | Only two Environments exist. | `gh api repos/Buzilion/CentralDevOps/environments --jq "[.environments[].name] \| sort"` returns `["Production","Staging"]`. |
-| Production runs need the owner's approval and `main`. | Environment audit in the runbook returns a required-reviewers rule and a `main` branch policy. |
-| `main` accepts changes only through a reviewed, checked pull request. | Ruleset audit; Task 5 attempts a direct push and an unreviewed merge and both are refused. |
+| Staging accepts any branch without approval; Production accepts only `release/*`, requires the owner's approval, and cannot be bypassed by administrators. | Environment audit in the runbook returns no Staging reviewers and a null branch policy; Production has the required-reviewers rule, `can_admins_bypass: false`, and a `release/*` branch policy. |
+| `main` and `release/*` accept changes only through reviewed, checked pull requests. | Ruleset audit; Task 5 attempts direct pushes and unreviewed merges against both patterns and both are refused. |
 | No private key material is committed. | Rule `K01` plus the history scan in Task 6. |
 
 ## Error Behavior
 
 | Situation | Behavior |
 |---|---|
-| The repository is not reachable with the available `gh` credentials (on 2026-10-30, `gh repo view Buzilion/CentralDevOps` returned "Could not resolve to a Repository"). | Task 1 stops and reports; no setting is guessed. The owner must create the repository or grant access first. |
-| The plan or visibility does not allow Environment protection rules or rulesets (for example a private repository on Free). | Task 1 stops, records the finding in the runbook, and asks the owner to make the repository public, upgrade the plan, or change the design. **Do not** continue with a weaker gate; every later spec assumes the Production approval gate exists. |
+| `GH_TOKEN` overrides the authorized keyring account and `gh repo view` cannot resolve the repository. | Unset the override and confirm `gh auth status` shows an account with repository admin access. On 2026-10-31, the `aldoawp` keyring account returned `ADMIN` and active organization membership with role `admin`. |
+| The plan or visibility does not allow the required Environment protection rules or rulesets (for example, required reviewers on a private/internal repository without Enterprise). | Task 1 stops, records the finding in the runbook, and asks the owner to make the repository public, upgrade the plan, or change the design. **Do not** continue with a weaker gate; every later spec assumes the Production approval gate exists. |
 | The required reviewer cannot be set (user id not found or API refusal). | Fail with the API error. No Production secret may be created until the audit shows the reviewer rule. |
 | The checker finds a violation. | Exit 1, print `path:line rule-id`, never the secret-like content. The CI check fails. |
 | The catalog is invalid JSON or lacks required keys. | Exit 2 with the reason. The check fails closed. |
