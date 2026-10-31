@@ -36,6 +36,8 @@ jobs:
       ref: ${{ steps.verify.outputs.ref }}
       run_id: ${{ steps.verify.outputs.run_id }}
       run_attempt: ${{ steps.verify.outputs.run_attempt }}
+      audience_expected: ${{ steps.verify.outputs.audience_expected }}
+      audience_observed: ${{ steps.verify.outputs.audience_observed }}
       check_central_ref: ${{ steps.verify.outputs.check_central_ref }}
       check_bundle_encoding: ${{ steps.verify.outputs.check_bundle_encoding }}
       check_oidc_signature: ${{ steps.verify.outputs.check_oidc_signature }}
@@ -80,6 +82,8 @@ jobs:
           VERIFIED_REF: ${{ needs.authorize.outputs.ref }}
           VERIFIED_RUN_ID: ${{ needs.authorize.outputs.run_id }}
           VERIFIED_RUN_ATTEMPT: ${{ needs.authorize.outputs.run_attempt }}
+          VERIFIED_AUDIENCE_EXPECTED: ${{ needs.authorize.outputs.audience_expected }}
+          VERIFIED_AUDIENCE_OBSERVED: ${{ needs.authorize.outputs.audience_observed }}
           CHECK_CENTRAL_REF: ${{ needs.authorize.outputs.check_central_ref }}
           CHECK_BUNDLE_ENCODING: ${{ needs.authorize.outputs.check_bundle_encoding }}
           CHECK_OIDC_SIGNATURE: ${{ needs.authorize.outputs.check_oidc_signature }}
@@ -120,6 +124,10 @@ jobs:
           printf 'Verified job workflow: %s\n' "$VERIFIED_JOB_WORKFLOW_REF"
           printf 'Verified ref: %s\n' "$VERIFIED_REF"
           printf 'Verified source run: %s (attempt %s)\n' "$VERIFIED_RUN_ID" "$VERIFIED_RUN_ATTEMPT"
+          printf 'Audience comparison: expected=%s observed=%s result=%s\n' \
+            "$VERIFIED_AUDIENCE_EXPECTED" \
+            "$VERIFIED_AUDIENCE_OBSERVED" \
+            "$CHECK_AUDIENCE_BINDING"
           printf 'Authorization checks passed: central_ref=%s, bundle_encoding=%s, oidc_signature=%s, issuer=%s, expiry=%s, audience_binding=%s, required_claims=%s, source_fixture=%s, source_claims=%s, dispatch_actor=%s\n' \
             "$CHECK_CENTRAL_REF" \
             "$CHECK_BUNDLE_ENCODING" \
