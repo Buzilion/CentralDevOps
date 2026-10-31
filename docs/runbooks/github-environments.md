@@ -2,7 +2,7 @@
 
 ## Status
 
-**Applied and audited on 2026-10-31.** The `GH_TOKEN` environment override could not resolve the repository; after unsetting it, the `aldoawp` keyring account resolved it with `ADMIN` permission. The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`; Staging has no reviewers or branch restriction. This foundation work created no Environment secrets or variables. The owner has since removed the pre-existing Environment entries; current repository and Environment counts are zero. The organization-level F-10 audit remains pending because the active token lacks `admin:org`.
+**Applied and audited on 2026-10-31.** The `GH_TOKEN` environment override could not resolve the repository; after unsetting it, the `aldoawp` keyring account resolved it with `ADMIN` permission. The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`; Staging has no reviewers or branch restriction. This foundation work created no Environment secrets or variables. The owner has since removed the pre-existing Environment entries; repository and Environment counts are zero. The final organization-level F-10 audit also returned empty secret and variable inventories.
 
 The current requirements are exactly two Environments: `Staging` accepts all branches without reviewers, and `Production` requires approval by the repository owner, disallows administrator bypass, and accepts only protected `release/*` branches. The repository ruleset is a separate Task 5 gate for `main` and `release/*`.
 
@@ -21,6 +21,7 @@ The current requirements are exactly two Environments: `Staging` accepts all bra
 | 2026-10-31 | `aldoawp` keyring account | A Staging PUT with both branch-policy booleans set to `false` was rejected with HTTP 422 and made no change. Omitting the policy correctly leaves it `null`, which allows all branches. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active with both ref patterns, required review/check rules, and only the `aldoawp` pull-request-only bypass. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active for `refs/heads/main` and `refs/heads/release/*`, with deletion, non-fast-forward, pull-request, required-status-check rules, and the D6 `aldoawp` pull-request-only bypass. |
+| 2026-10-31 | `aldoawp` account with `admin:org` | Paginated, visibility-only organization Actions secret and variable GETs returned empty lists; no secret values or variable values were accessed. |
 
 **Plan check:** the public repository and Free plan support Environment protection rules. If the repository becomes private/internal, required-reviewer and wait-timer rules require Enterprise; re-audit before relying on the gate.
 
@@ -152,8 +153,8 @@ gh api repos/Buzilion/CentralDevOps/environments/Production/variables --jq '.tot
 gh api repos/Buzilion/CentralDevOps/environments/Staging/secrets --jq '.total_count'
 gh api repos/Buzilion/CentralDevOps/environments/Staging/variables --jq '.total_count'
 
-gh api orgs/Buzilion/actions/secrets --jq '[.secrets[] | {name,visibility}]'
-gh api orgs/Buzilion/actions/variables --jq '[.variables[] | {name,visibility}]'
+gh api --paginate -X GET orgs/Buzilion/actions/secrets --jq '.secrets[] | {name,visibility}'
+gh api --paginate -X GET orgs/Buzilion/actions/variables --jq '.variables[] | {name,visibility}'
 ```
 
 The repository and Environment counts must be zero at this foundation stage. Organization entries must be empty or have `visibility: "selected"`; no value field is needed for this audit.
@@ -194,7 +195,7 @@ This preliminary entry is superseded by the initial foundation acceptance audit 
 | F-10 | Repository/environment secret-variable list endpoints; organization endpoint attempts | Gap: repository-level counts are zero. Production currently has 4 secrets and 5 variables; Staging has 2 secrets and 3 variables. Organization-level audit returned HTTP 403 because the active token lacks `admin:org`; no values were retrieved and nothing was deleted. These Environment entries conflict with this spec's empty-at-acceptance requirement and need owner review. |
 | F-11 | This runbook's apply/audit commands and the dated evidence above | Pass: apply and audit steps are recorded. |
 
-**Task 6 status:** repository and Environment secret/variable acceptance now passes after owner cleanup. The organization-level audit remains blocked: the active `aldoawp` token has `read:org` but not `admin:org`, and both organization Actions endpoints return HTTP 403. No secret values were accessed or recorded.
+**Task 6 status at initial audit:** repository and Environment secret/variable acceptance passed after owner cleanup, but the organization-level audit was blocked by the missing `admin:org` scope. See the post-remediation audit below for the final result.
 
 ## Post-remediation foundation audit (2026-10-31)
 
@@ -209,7 +210,7 @@ This preliminary entry is superseded by the initial foundation acceptance audit 
 | F-07 | `test_forbidden_name_in_deploy_workflow_reports_f01` in the checker suite | Pass. |
 | F-08 | `git log --all --format='%H' -G '-----BEGIN [A-Z ]*PRIVATE KEY-----'`; checker run | Pass: no matching history commits; checker exit `0`. No key material was printed. |
 | F-09 | `gh repo view Buzilion/CentralDevOps --json visibility,viewerPermission`; `gh api orgs/Buzilion --jq .plan.name`; README | Pass: repository `PUBLIC`, permission `ADMIN`, organization plan `free`; README records these facts. |
-| F-10 | Repository and Environment secret/variable count endpoints; organization endpoint attempts | Partial: repository, Production and Staging counts are all zero. Organization secret and variable endpoints returned HTTP 403 because `admin:org` is not authorized; no values were accessed. |
+| F-10 | Repository and Environment count endpoints; `gh api --paginate -X GET orgs/Buzilion/actions/secrets --jq '.secrets[].visibility'`; `gh api --paginate -X GET orgs/Buzilion/actions/variables --jq '.variables[].visibility'` | Pass: repository, Production and Staging counts are all zero; paginated organization secret and variable inventories are empty. No values were accessed. |
 | F-11 | This runbook's apply and audit commands and the dated evidence above | Pass: procedures and expected outputs are recorded. |
 
-Task 6 remains blocked until an authorized organization-level audit proves that no organization secret or variable is visible to all repositories. Request `admin:org` for the active account with `gh auth refresh -h github.com -s admin:org`, or have an organization admin run the two read-only organization commands above and provide the name/visibility-only results.
+**Task 6 status: complete.** F-01 through F-11 have current evidence above. Organization secret and variable inventories are empty, and repository/Environment inventories are also zero. Direct update/deletion attempts against `main` were intentionally omitted to avoid risking the default branch; the effective-rules API confirms the active protections, and scratch `release/*` tests verified rejection behavior.
