@@ -30,6 +30,7 @@ This is the intended layout, not a claim that every path exists. Later specs cre
 |---|---|
 | `.github/CODEOWNERS` | Code ownership rules; added by this foundation task. |
 | `.github/workflows/`, `.github/actions/` | Central workflows and shared actions; added by later specs. |
+| `.github/rulesets/` | Repository branch protection ruleset; added by this foundation task. |
 | `inventories/{staging,production}/` | Environment-specific Ansible inventory; added by later specs. |
 | `apps/<app-slug>/` | Reviewed per-app deployment registry; added by later specs. |
 | `playbooks/`, `roles/<role_snake_case>/` | Ansible operations and reusable roles; added by later specs. |
@@ -58,6 +59,6 @@ On Windows, use `py -3` in place of `python3`.
 
 GitHub's [Environments REST documentation](https://docs.github.com/en/rest/deployments/environments) states that public repositories support Environments, deployment-branch policies, required reviewers, and wait timers on current plans (legacy plans excluded). Private or internal repositories need Pro, Team, or Enterprise for Environment and deployment-branch features, and Enterprise for required-reviewer or wait-timer protection rules.
 
-**Repository-specific status (2026-10-31):** With `GH_TOKEN` unset, `gh repo view Buzilion/CentralDevOps --json nameWithOwner,visibility,viewerPermission` succeeded as `aldoawp` with `PUBLIC` visibility and `ADMIN` permission. The Buzilion organization plan is `Free`. The Environment list is exactly `["Production","Staging"]`; Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`, while Staging has no approval or branch restriction. No Environment secrets or variables were created.
+**Repository-specific status (2026-10-31):** With `GH_TOKEN` unset, `gh repo view Buzilion/CentralDevOps --json nameWithOwner,visibility,viewerPermission` succeeded as `aldoawp` with `PUBLIC` visibility and `ADMIN` permission. The Buzilion organization plan is `Free`. The Environment list is exactly `["Production","Staging"]`; Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`, while Staging has no approval or branch restriction. This foundation work created no Environment secrets or variables.
 
-Use the [GitHub Environments runbook](docs/runbooks/github-environments.md) to re-audit after any visibility or plan change. Environment protection settings are verified; the `main` and `release/*` repository ruleset remains pending Task 5, so branch protections are not yet in force.
+Use the [GitHub Environments runbook](docs/runbooks/github-environments.md) to re-audit after any visibility or plan change. Environment protection settings and the active `main`/`release/*` ruleset (ID `26226141`) are verified. The matching ruleset JSON is present locally but still needs to be committed to the repository.

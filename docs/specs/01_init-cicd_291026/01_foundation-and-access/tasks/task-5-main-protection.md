@@ -21,7 +21,7 @@ CODEOWNERS and lint do nothing until protected branches require them. The rulese
 ## Proposed approach
 
 1. Write the ruleset payload: target `branch`, include both `refs/heads/main` and `refs/heads/release/*`, enforcement `active`, rules `deletion`, `non_fast_forward`, `pull_request` (1 approval, code-owner review, dismiss stale reviews, require last-push approval), `required_status_checks` (`workflow-lint`, `naming-and-secrets`, strict). Apply identical rules to both ref patterns.
-2. Ask the owner whether a second reviewer exists. If not, add the owner as a bypass actor with mode `pull_request` and record the exception and its removal condition in the runbook. Do not add any other bypass.
+2. The collaborator audit shows only `@aldoawp`, who is also the sole codeowner. Apply Decision D6 by adding only that user as a bypass actor with mode `pull_request`; record the exception and removal condition in the runbook. Do not add any other bypass.
 3. Apply with `gh api -X POST repos/Buzilion/CentralDevOps/rulesets --input .github/rulesets/main.json`; record the ruleset id in the runbook for updates (`PUT`).
 4. Against each target pattern, test that direct pushes, force-pushes and deletion are refused; a pull request touching `.github/workflows/` cannot merge without code-owner review; and a pull request with a failing required check cannot merge. Delete any scratch branches after the tests.
 
@@ -42,6 +42,8 @@ SEC-13, SEC-14, NFR-17; F-03, F-04.
 ```powershell
 gh api repos/Buzilion/CentralDevOps/rulesets --jq "[.[] | {name, enforcement, include: .conditions.ref_name.include}]"
 # expect an active ruleset whose include patterns contain refs/heads/main and refs/heads/release/*
+gh api repos/Buzilion/CentralDevOps/rulesets/<ruleset-id> --jq ".bypass_actors"
+# expect only @aldoawp with bypass_mode "pull_request" until a second codeowner/reviewer is added
 git push origin HEAD:main
 # from a scratch clone with no bypass: expect "protected branch / repository rule violations"
 # Repeat the push, PR-review, required-check and deletion tests against a scratch release/* branch.
