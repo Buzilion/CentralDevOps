@@ -2,7 +2,7 @@
 
 ## Status
 
-**Applied and audited on 2026-10-31.** The `GH_TOKEN` environment override could not resolve the repository; after unsetting it, the `aldoawp` keyring account resolved it with `ADMIN` permission. The repository is public on the Free plan. Production now requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`; Staging has no reviewers or branch restriction. This foundation task created no Environment secrets or variables; Task 6's audit below records pre-existing entries.
+**Applied and audited on 2026-10-31.** The `GH_TOKEN` environment override could not resolve the repository; after unsetting it, the `aldoawp` keyring account resolved it with `ADMIN` permission. The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`; Staging has no reviewers or branch restriction. This foundation work created no Environment secrets or variables. The owner has since removed the pre-existing Environment entries; current repository and Environment counts are zero. The organization-level F-10 audit remains pending because the active token lacks `admin:org`.
 
 The current requirements are exactly two Environments: `Staging` accepts all branches without reviewers, and `Production` requires approval by the repository owner, disallows administrator bypass, and accepts only protected `release/*` branches. The repository ruleset is a separate Task 5 gate for `main` and `release/*`.
 
@@ -17,6 +17,7 @@ The current requirements are exactly two Environments: `Staging` accepts all bra
 | 2026-10-31 | `aldoawp` keyring account | `gh api repos/Buzilion/CentralDevOps/environments --jq '[.environments[].name] | sort'` returned `["Production","Staging"]`. |
 | 2026-10-31 | `aldoawp` keyring account | Production GET returned reviewer `aldoawp`, `prevent_self_review: false`, `can_admins_bypass: false`, and deployment-branch policy `{protected_branches:false,custom_branch_policies:true}`. Its branch-policy endpoint returned `release/*`. |
 | 2026-10-31 | `aldoawp` keyring account | Staging GET returned no protection rules and `deployment_branch_policy: null`, allowing all branches. |
+| 2026-10-31 | `aldoawp` keyring account | A later audit found an unexpected Staging `required_reviewers` rule for `aldoawp`. Reapplied the intended `{"wait_timer":0,"reviewers":[]}` configuration; the follow-up GET returned no protection rules and a null branch policy. |
 | 2026-10-31 | `aldoawp` keyring account | A Staging PUT with both branch-policy booleans set to `false` was rejected with HTTP 422 and made no change. Omitting the policy correctly leaves it `null`, which allows all branches. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active with both ref patterns, required review/check rules, and only the `aldoawp` pull-request-only bypass. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active for `refs/heads/main` and `refs/heads/release/*`, with deletion, non-fast-forward, pull-request, required-status-check rules, and the D6 `aldoawp` pull-request-only bypass. |
@@ -137,11 +138,29 @@ gh api repos/Buzilion/CentralDevOps/rulesets --jq '[.[] | {id,name,enforcement,i
 gh api repos/Buzilion/CentralDevOps/rulesets/<ruleset-id> --jq '{name,enforcement,include:.conditions.ref_name.include,bypass_actors,rules:[.rules[] | {type,parameters}]}'
 ```
 
-The include list must contain `refs/heads/main` and `refs/heads/release/*`; the ruleset must be active and include the deletion, non-fast-forward, pull-request and required-status-check rules. The bypass list must contain only `aldoawp` with mode `pull_request`. The API audit confirmed these settings. Task 5's scratch-branch tests must verify the same behavior for both branch patterns. The matching `.github/rulesets/main.json` file is currently local and must be committed to make the applied settings reproducible.
+The include list must contain `refs/heads/main` and `refs/heads/release/*`; the ruleset must be active and include the deletion, non-fast-forward, pull-request and required-status-check rules. The bypass list must contain only `aldoawp` with mode `pull_request`. The API audit confirmed these settings. Release scratch-branch direct/force-push and deletion attempts were refused; the effective-rules API confirms the same rules for `main`. Direct update/deletion attempts against `main` were intentionally not made to avoid risking the default branch. PR `#3` later completed with a failed required check and GitHub reported it blocked and review-required; it was closed unmerged. GitHub's API adds default fields to returned rules, while the substantive settings match the canonical `.github/rulesets/main.json` payload.
+
+## Secrets and variables audit
+
+These read-only commands report counts or names/visibility only; do not request or record secret values. Organization-level endpoints require an authorized org admin token with `admin:org` or the corresponding fine-grained Actions read permission.
+
+```powershell
+gh api repos/Buzilion/CentralDevOps/actions/secrets --jq '.total_count'
+gh api repos/Buzilion/CentralDevOps/actions/variables --jq '.total_count'
+gh api repos/Buzilion/CentralDevOps/environments/Production/secrets --jq '.total_count'
+gh api repos/Buzilion/CentralDevOps/environments/Production/variables --jq '.total_count'
+gh api repos/Buzilion/CentralDevOps/environments/Staging/secrets --jq '.total_count'
+gh api repos/Buzilion/CentralDevOps/environments/Staging/variables --jq '.total_count'
+
+gh api orgs/Buzilion/actions/secrets --jq '[.secrets[] | {name,visibility}]'
+gh api orgs/Buzilion/actions/variables --jq '[.variables[] | {name,visibility}]'
+```
+
+The repository and Environment counts must be zero at this foundation stage. Organization entries must be empty or have `visibility: "selected"`; no value field is needed for this audit.
 
 ## Initial Task 6 audit (superseded)
 
-This preliminary entry is superseded by the final foundation acceptance audit below.
+This preliminary entry is superseded by the initial foundation acceptance audit below; see the post-remediation audit at the end for current results.
 
 | Requirement | Command or evidence | Result |
 |---|---|---|
@@ -157,9 +176,9 @@ This preliminary entry is superseded by the final foundation acceptance audit be
 | F-10 | Repository/environment secret-variable list endpoints; organization endpoint attempts | Gap: repository-level counts are zero. Production currently has 4 secrets and 5 variables; Staging has 2 secrets and 3 variables. Organization-level audit returned HTTP 403 because the token lacks `admin:org`; no values were retrieved and nothing was deleted. Existing Environment entries conflict with this spec's empty-at-acceptance requirement and need owner review. |
 | F-11 | This runbook's apply/audit commands and the dated evidence above | Pass: procedures and current evidence are recorded. |
 
-**Task 6 status:** blocked until the owner resolves the existing Environment secrets/variables and an authorized token can audit organization-level values. The checklist remains unchanged by the `start-task` workflow.
+**Task 6 status at initial audit:** blocked because Environment entries existed and the active token could not audit organization-level settings. The entries have since been removed; see the post-remediation audit below.
 
-## Foundation acceptance audit (2026-10-31)
+## Foundation acceptance audit (initial, 2026-10-31)
 
 | Requirement | Command or evidence | Result |
 |---|---|---|
@@ -175,4 +194,22 @@ This preliminary entry is superseded by the final foundation acceptance audit be
 | F-10 | Repository/environment secret-variable list endpoints; organization endpoint attempts | Gap: repository-level counts are zero. Production currently has 4 secrets and 5 variables; Staging has 2 secrets and 3 variables. Organization-level audit returned HTTP 403 because the active token lacks `admin:org`; no values were retrieved and nothing was deleted. These Environment entries conflict with this spec's empty-at-acceptance requirement and need owner review. |
 | F-11 | This runbook's apply/audit commands and the dated evidence above | Pass: apply and audit steps are recorded. |
 
-**Task 6 status:** blocked until the owner resolves the existing Environment secrets/variables and an authorized token can audit organization-level secrets/variables. The checklist remains unchanged by the `start-task` workflow.
+**Task 6 status:** repository and Environment secret/variable acceptance now passes after owner cleanup. The organization-level audit remains blocked: the active `aldoawp` token has `read:org` but not `admin:org`, and both organization Actions endpoints return HTTP 403. No secret values were accessed or recorded.
+
+## Post-remediation foundation audit (2026-10-31)
+
+| Requirement | Command or evidence | Result |
+|---|---|---|
+| F-01 | `gh api repos/Buzilion/CentralDevOps/environments --jq '[.environments[].name] \| sort'` | Pass: `["Production","Staging"]`. |
+| F-02 | Production and Staging Environment GETs and Production deployment-branch-policy GET | Pass after correction: Production reviewer `aldoawp`, self-review allowed, administrator bypass disabled, only `release/*`; Staging has no protection rules and a null branch policy. |
+| F-03 | `gh api 'repos/Buzilion/CentralDevOps/codeowners/errors?ref=main' --jq '.errors'` | Pass: `[]`. |
+| F-04 | Ruleset `26226141` GET, effective-rules GET for `main`, prior scratch `release/*` push/force/delete attempts, and PR `#3` state/checks | Partial: the active ruleset includes both ref patterns and the expected rules; release scratch attempts were refused. PR `#3` completed with `workflow-lint` failure, `naming-and-secrets` success, `mergeStateStatus=BLOCKED`, and `reviewDecision=REVIEW_REQUIRED`; it was closed unmerged. No direct update/deletion attempt was made against `main` to avoid risking the default branch. The payload is on the feature branch but is not yet present on `main`. |
+| F-05 | `gh pr checks 1`; temporary negative-fixture PR `#2` and its Actions logs | Pass: both jobs passed on PR `#1`; unsafe fixtures failed the expected jobs on PR `#2`. |
+| F-06 | `py -3.12 deployment/tools/check-github-names.py`; `py -3.12 -m unittest discover -s deployment/tools/tests -v` | Pass: checker exit `0`; all 14 tests passed. |
+| F-07 | `test_forbidden_name_in_deploy_workflow_reports_f01` in the checker suite | Pass. |
+| F-08 | `git log --all --format='%H' -G '-----BEGIN [A-Z ]*PRIVATE KEY-----'`; checker run | Pass: no matching history commits; checker exit `0`. No key material was printed. |
+| F-09 | `gh repo view Buzilion/CentralDevOps --json visibility,viewerPermission`; `gh api orgs/Buzilion --jq .plan.name`; README | Pass: repository `PUBLIC`, permission `ADMIN`, organization plan `free`; README records these facts. |
+| F-10 | Repository and Environment secret/variable count endpoints; organization endpoint attempts | Partial: repository, Production and Staging counts are all zero. Organization secret and variable endpoints returned HTTP 403 because `admin:org` is not authorized; no values were accessed. |
+| F-11 | This runbook's apply and audit commands and the dated evidence above | Pass: procedures and expected outputs are recorded. |
+
+Task 6 remains blocked until an authorized organization-level audit proves that no organization secret or variable is visible to all repositories. Request `admin:org` for the active account with `gh auth refresh -h github.com -s admin:org`, or have an organization admin run the two read-only organization commands above and provide the name/visibility-only results.
