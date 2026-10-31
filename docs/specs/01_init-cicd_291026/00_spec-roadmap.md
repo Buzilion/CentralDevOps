@@ -64,7 +64,7 @@ Go-live gates are the five listed in the parent PRD §8: (1) throwaway-app test,
 | 08 | `08_shared-database` | Spec, checklist and tasks written, awaiting review; implementation gated on completion of 04, 05 and 06 |
 | 09 | `09_app-build-and-provenance` | Spec, checklist and tasks written, awaiting review; implementation gated on completion of 01 |
 | 10 | `10_deploy-authorization` | Spec, checklist and tasks written, awaiting review; implementation gated on completion of 02, 06 and 09 |
-| 11 | `11_deploy-execution-and-rollback` | Spec and tasks written, awaiting review; implementation gated on completion of 04, 07, 08 and 10 |
+| 11 | `11_deploy-execution-and-rollback` | Spec and tasks written, awaiting review; implementation gated on completion of 04   , 07, 08 and 10 |
 | 12 | `12_app-deploy-request` | Spec, checklist and task breakdown drafted, awaiting review; implementation gated on completion of 10 and 11 |
 | 13 | `13_backup-and-recovery` | Spec, checklist and tasks written, awaiting review; implementation gated on completion of 08, 11 and 12 |
 | 14 | `14_observability-and-alerting` | Spec, checklist and 8 tasks written, awaiting review; implementation gated on completion of 05 and 13; delivery acceptance also requires approved alert routing and plan fit |
