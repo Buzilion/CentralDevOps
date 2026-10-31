@@ -51,9 +51,10 @@ function makeProof(options = {}) {
   const bundleBytes = options.bundleBytes ?? randomBytes(32);
   const sealedBundleBase64 =
     options.sealedBundleBase64 ?? bundleBytes.toString('base64');
+  const expectedAudience = audienceForTest(targetEnvironment, imageRef, bundleBytes);
   const claims = {
     iss: 'https://token.actions.githubusercontent.com',
-    aud: audienceForTest(targetEnvironment, imageRef, bundleBytes),
+    aud: expectedAudience,
     exp: nowSeconds + 300,
     repository: 'Buzilion/TestRepo-Application',
     job_workflow_ref:
@@ -68,6 +69,7 @@ function makeProof(options = {}) {
   return {
     targetEnvironment,
     imageRef,
+    expectedAudience,
     oidcToken: signClaims(claims),
     sealedBundleBase64,
     centralRef: options.centralRef ?? 'refs/heads/feature/02_dispatch-trust-proof',
@@ -87,7 +89,8 @@ function rejectsWithCheck(promise, check) {
 }
 
 test('accepts a signed Staging proof from a non-main CentralDevOps branch', async () => {
-  const outputs = await verify(makeProof());
+  const proof = makeProof();
+  const outputs = await verify(proof);
 
   assert.deepEqual(outputs, {
     environment: 'Staging',
@@ -97,6 +100,8 @@ test('accepts a signed Staging proof from a non-main CentralDevOps branch', asyn
     ref: 'refs/heads/main',
     run_id: '1234567890',
     run_attempt: '1',
+    audience_expected: proof.expectedAudience,
+    audience_observed: proof.expectedAudience,
     check_central_ref: 'passed',
     check_bundle_encoding: 'passed',
     check_oidc_signature: 'passed',
@@ -181,8 +186,10 @@ test('rejects an invalid issuer and malformed or mismatched audience', async () 
   );
 });
 
-test('rejects an unexpected dispatch actor independently of the signed proof', async () => {
+test('rejects an unexpected actor before parsing the supplied proof', async () => {
   const proof = makeProof({ dispatchActor: 'unexpected-user' });
+  proof.oidcToken = 'not-a-jwt';
+  proof.sealedBundleBase64 = 'not-base64';
   await rejectsWithCheck(verify(proof), 'dispatch_actor');
 });
 

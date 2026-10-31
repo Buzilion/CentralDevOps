@@ -358,6 +358,9 @@ export async function verifyDispatchProof(inputs, options = {}) {
   if (targetEnvironment !== 'Staging' && targetEnvironment !== 'Production') {
     fail('target_environment');
   }
+  if (inputs.dispatchActor !== EXPECTED_DISPATCH_ACTOR) {
+    fail('dispatch_actor');
+  }
 
   const imageRef = requireString(inputs.imageRef, 'dispatch_input');
   validateCentralRef(targetEnvironment, inputs.centralRef);
@@ -392,6 +395,8 @@ export async function verifyDispatchProof(inputs, options = {}) {
     ref: claims.ref,
     run_id: claims.run_id,
     run_attempt: claims.run_attempt,
+    audience_expected: expectedAudience,
+    audience_observed: claims.aud,
     check_central_ref: 'passed',
     check_bundle_encoding: 'passed',
     check_oidc_signature: 'passed',
