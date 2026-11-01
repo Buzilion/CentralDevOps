@@ -141,8 +141,13 @@ def validate_admin_private_key(
             ) from exc
 
     if result.returncode != 0:
+        if "passphrase" in result.stderr.casefold():
+            raise BootstrapPhaseError(
+                "admin SSH private key is passphrase-protected; "
+                "the workflow requires an unencrypted key"
+            )
         raise BootstrapPhaseError(
-            "admin SSH private key is unreadable, invalid, or passphrase-protected"
+            "admin SSH private key is invalid or unreadable"
         )
 
     try:

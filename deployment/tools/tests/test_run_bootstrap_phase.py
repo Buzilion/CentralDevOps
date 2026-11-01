@@ -172,17 +172,42 @@ class AdminKeyValidationTests(unittest.TestCase):
         with mock.patch.object(
             RUN_BOOTSTRAP_PHASE.subprocess,
             "run",
-            return_value=SimpleNamespace(returncode=1, stdout="", stderr=""),
+            return_value=SimpleNamespace(
+                returncode=1, stdout="", stderr="invalid format"
+            ),
         ):
             with self.assertRaisesRegex(
                 RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
-                "passphrase-protected",
+                "invalid or unreadable",
             ):
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
                     self.admin_private_key,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
+        self.assertEqual(list(self.runner_temp.iterdir()), [])
+
+    def test_passphrase_failure_is_reported_without_revealing_stderr(self) -> None:
+        with mock.patch.object(
+            RUN_BOOTSTRAP_PHASE.subprocess,
+            "run",
+            return_value=SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr="incorrect passphrase supplied",
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+                "requires an unencrypted key",
+            ) as error:
+                RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
+                    self.admin_private_key,
+                    self.admin_public_key,
+                    directory=self.runner_temp,
+                )
+
+        self.assertNotIn("incorrect passphrase supplied", str(error.exception))
         self.assertEqual(list(self.runner_temp.iterdir()), [])
 
     @unittest.skipIf(
