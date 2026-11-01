@@ -1,0 +1,68 @@
+---
+- name: Enable fail2ban only for the disposable access-path proof
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ bootstrap_admin_user }}"
+  become: true
+  vars:
+    fail2ban_enabled: true
+    ansible_ssh_common_args: >-
+      {{ bootstrap_ssh_hostkey_args }}
+      -o PreferredAuthentications=publickey
+      -o PasswordAuthentication=no
+      -o KbdInteractiveAuthentication=no
+  pre_tasks:
+    - name: Require one explicitly flagged disposable host and the admin key
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - bootstrap_disposable is boolean
+          - bootstrap_disposable
+          - >-
+            lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
+            length > 0
+        fail_msg: >-
+          Fail2ban testing requires one disposable host and the admin key.
+      no_log: true
+
+    - name: Confirm the fresh connection is cdo-admin
+      ansible.builtin.command:
+        argv:
+          - id
+          - -un
+      become: false
+      register: admin_identity
+      changed_when: false
+      failed_when: >-
+        admin_identity.rc != 0 or
+        admin_identity.stdout | trim != bootstrap_admin_user
+      no_log: true
+
+  roles:
+    - fail2ban
+
+  post_tasks:
+    - name: Confirm the fail2ban service is active
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - fail2ban
+      register: fail2ban_service
+      changed_when: false
+      failed_when: >-
+        fail2ban_service.rc != 0 or
+        fail2ban_service.stdout | trim != "active"
+      no_log: true
+
+    - name: Confirm the SSH jail is loaded
+      ansible.builtin.command:
+        argv:
+          - fail2ban-client
+          - status
+          - sshd
+      register: fail2ban_sshd_jail
+      changed_when: false
+      failed_when: fail2ban_sshd_jail.rc != 0
+      no_log: true

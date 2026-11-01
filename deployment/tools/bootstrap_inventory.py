@@ -127,6 +127,15 @@ def validate_target_alias(environment: str, target: str | None) -> str:
     return target
 
 
+def is_disposable_target(target: str, host: Mapping[str, Any]) -> bool:
+    alias = HOST_ALIAS_RE.fullmatch(target)
+    return (
+        alias is not None
+        and alias.group("purpose") == "disposable"
+        and host.get("bootstrap_disposable") is True
+    )
+
+
 def validate_inventory_path(
     environment: str | None,
     provided_path: str | None,
@@ -250,6 +259,7 @@ def validate_inventory_target(
     ssh_keygen: str = "ssh-keygen",
     command_environment: Mapping[str, str] | None = None,
     disposable_proof_commit: str | None = DISPOSABLE_VPS_PROOF_COMMIT,
+    require_disposable: bool = False,
 ) -> Mapping[str, Any]:
     target = validate_target_alias(environment, target)
     if not isinstance(hostvars, Mapping) or not hostvars:
@@ -263,8 +273,12 @@ def validate_inventory_target(
         raise BootstrapValidationError(
             "target host is not an exact member of the selected inventory"
         )
+    alias = HOST_ALIAS_RE.fullmatch(target)
+    if require_disposable and not is_disposable_target(target, host):
+        raise BootstrapValidationError(
+            "this operation requires an explicitly flagged disposable host"
+        )
     if disposable_proof_commit is None:
-        alias = HOST_ALIAS_RE.fullmatch(target)
         if (
             alias is None
             or alias.group("purpose") != "disposable"
@@ -431,7 +445,8 @@ def validate_target(
     *,
     require_inventory_path: bool = False,
     command_environment: Mapping[str, str] | None = None,
-) -> None:
+    require_disposable: bool = False,
+) -> Mapping[str, Any]:
     if not isinstance(environment, str) or not isinstance(target, str):
         raise BootstrapValidationError(
             "target environment and host are required"
@@ -447,12 +462,13 @@ def validate_target(
         environment,
         command_environment=command_environment,
     )
-    validate_inventory_target(
+    return validate_inventory_target(
         environment,
         target,
         hostvars,
         root / config.known_hosts,
         command_environment=command_environment,
+        require_disposable=require_disposable,
     )
 
 
@@ -489,13 +505,27 @@ def main(argv: list[str] | None = None) -> int:
                 os.environ.get("BOOTSTRAP_ACTOR_ID"),
             )
         if arguments.stage in {"target", "all"}:
-            validate_target(
+            target_facts = validate_target(
                 arguments.root.resolve(),
                 environment,
                 target,
                 os.environ.get("ANSIBLE_INVENTORY_PATH"),
                 require_inventory_path=arguments.require_environment_inventory,
             )
+            github_output = os.environ.get("GITHUB_OUTPUT")
+            if github_output:
+                disposable = is_disposable_target(target, target_facts)
+                try:
+                    with Path(github_output).open(
+                        "a", encoding="utf-8", newline="\n"
+                    ) as output:
+                        output.write(
+                            f"target_disposable={str(disposable).lower()}\n"
+                        )
+                except OSError as exc:
+                    raise BootstrapValidationError(
+                        "could not write the validated target output"
+                    ) from exc
     except BootstrapValidationError as exc:
         print(f"bootstrap preflight failed: {exc}", file=sys.stderr)
         return 1

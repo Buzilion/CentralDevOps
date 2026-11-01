@@ -12,7 +12,7 @@ Implement the provider-credential phase that creates the separate account identi
 ## Relevant files or references
 
 - Create `playbooks/bootstrap.yml`
-- Create roles `common`, `users`, `firewall`, and `fail2ban` (the fail2ban role remains disabled by default until the disposable-host test passes)
+- Create roles `common`, `users`, `firewall`, and `fail2ban`; keep fail2ban out of the initial-access playbook and disabled by default until the disposable-host test passes
 - `docs/design/infrastructure-contracts-and-invariants.md` §§4–6
 - v5 design §§6.1, 12.1
 - Spec sections: Bootstrap and hardening sequence; SSH source restriction policy
