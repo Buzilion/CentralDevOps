@@ -15,15 +15,15 @@ Do not run the protected workflow until all of these are true:
 - Production approval and `release/*` deployment-branch protection remain enabled.
 - The initial password secret is set only for the target VPS and the admin private-key secret belongs to the selected Environment.
 
-The Production inventory contains the user-authorized `prd-disposable-01` candidate with user-reported 3723 MiB RAM, a provisional 1536 MiB reserve, and a provisional 2048 MiB app budget. No live target validation or baseline measurement has been recorded. The Staging inventory remains empty. Do not dispatch until the target facts are verified and the selected Environment's required variables and secrets are available.
+The Production inventory contains the user-authorized `prd-disposable-01` candidate with user-reported 3723 MiB RAM, a provisional 1536 MiB reserve, and a provisional 2048 MiB app budget. No live target validation or baseline measurement has been recorded. The Staging inventory remains empty. A read-only audit using `aldoawp` confirmed the fixed inventory-path variable and the required secret names in both Environments; no secret values were accessed. Do not dispatch until the target facts are verified and the operator confirms the selected Environment secrets are correct for the host.
 
 ## GitHub Environment protection audit
 
-Read-only metadata was checked on 2026-11-01; no Environment settings were changed and no secret values were accessed.
+Read-only metadata was checked using `aldoawp` on 2026-11-01; no Environment settings were changed and no secret values were accessed.
 
 - `Production` has a required reviewer, accepts `release/*`, and has administrator bypass disabled.
 - `Staging` has the fixed required-reviewer gate, allows self-review and administrator bypass, and has no branch restriction.
-- GitHub denied access to the Environment variable/secret name-list endpoints. The user reports that the required configuration is complete, but this CLI identity could not verify the presence of `ANSIBLE_INVENTORY_PATH`, `VPS_INITIAL_ACCESS_PASSWORD`, or `ANSIBLE_SSH_PRIVATE_KEY`; no secret values were accessed.
+- Staging has `ANSIBLE_INVENTORY_PATH=inventories/staging/hosts.yml`; Production has `ANSIBLE_INVENTORY_PATH=inventories/production/hosts.yml`. Both Environments contain the secret names `VPS_INITIAL_ACCESS_PASSWORD` and `ANSIBLE_SSH_PRIVATE_KEY`. Secret values were not accessed, and their correctness for the host remains an operator confirmation.
 
 ## Pinned controller and local checks
 
@@ -100,7 +100,7 @@ The base UFW policy allows the configured SSH port, TCP 80/443, and outbound tra
 
 ## Disposable VPS proof and cleanup
 
-No disposable VPS proof has been run. The user has made the empty `buz-prod-1` VPS available for the test and reports that required configuration is complete. The Production inventory candidate records the user-reported 3723 MiB physical RAM and provisional reserve/budget; none has been confirmed by a live baseline measurement. The user reported that the provider-console fingerprint matches the pin, but Environment variable/secret metadata is inaccessible to this CLI identity. No workflow dispatch or SSH connection has been attempted.
+No disposable VPS proof has been run. The user has made the empty `buz-prod-1` VPS available for the test and reports that required configuration is complete. The Production inventory candidate records the user-reported 3723 MiB physical RAM and provisional reserve/budget; none has been confirmed by a live baseline measurement. The user reported that the provider-console fingerprint matches the pin. A read-only audit using `aldoawp` confirmed Environment path values and required secret names; no secret values were accessed. No workflow dispatch or SSH connection has been attempted.
 
 Use a separate temporary admin key for the proof, and record only sanitized evidence. For the user-authorized `buz-prod-1` candidate, the Production workflow must run from `release/*` and pass the required reviewer gate:
 
@@ -120,7 +120,7 @@ Read-only GitHub metadata was checked on 2026-11-01. No Environment setting was 
 - The repository has exactly `Staging` and `Production`.
 - `Production` has a required reviewer, administrator bypass disabled, and a `release/*` deployment-branch policy.
 - `Staging` has the fixed required-reviewer gate and no branch restriction. Self-review and administrator bypass are allowed in the current GitHub configuration.
-- GitHub returned HTTP 403 for Environment variable/secret-name listing. The presence of `ANSIBLE_INVENTORY_PATH` and bootstrap secrets was not verified.
+- The read-only audit using `aldoawp` confirmed `ANSIBLE_INVENTORY_PATH` values `inventories/staging/hosts.yml` and `inventories/production/hosts.yml`, plus the required secret names in both Environments. No secret values were accessed.
 
 ## Evidence log
 
@@ -136,14 +136,14 @@ Local audit updated on 2026-11-01. All 46 Python unit tests passed with one Ansi
 | Requirement | Local status | Evidence or remaining gate |
 |---|---|---|
 | H-01 | BLOCKED | Bootstrap roles and phases are implemented; end-to-end account, update, firewall, and public-key convergence needs the disposable VPS. |
-| H-02 | LOCAL PASS; LIVE BLOCKED | Fixed inventory mapping and exact alias/target checks have fixture tests; the `prd-disposable-01` candidate passes local Python validation. Environment variables could not be audited, and this feature branch is not an eligible published `release/*` ref. |
+| H-02 | LOCAL PASS; LIVE BLOCKED | Fixed inventory mapping and exact alias/target checks have fixture tests; the `prd-disposable-01` candidate passes local Python validation. Both Environment path values were confirmed; live target validation still requires an eligible published `release/*` ref. |
 | H-03 | USER CONFIRMED; LIVE BLOCKED | Strict checking and committed-pin lookup are configured and tested with generated fixture keys. The user reported an exact Ed25519 SHA256 fingerprint match against the Sumopod console; no live SSH handshake has been attempted. |
 | H-04 | BLOCKED | Separate proof process and hardening gate are implemented; successful and forced-failure transitions need the disposable VPS. |
 | H-05 | BLOCKED | Key-only SSH role and fresh post-hardening proof are implemented; login/refusal behavior needs the disposable VPS. |
 | H-06 | BLOCKED | UFW policy is implemented; effective rules and service behavior need the disposable VPS. |
 | H-07 | LOCAL PASS; LIVE BLOCKED | The Production candidate's address and provider username remain in its host vars; workflow and runner use fixed inventory mappings. The Staging inventory remains separate and empty. |
 | H-08 | USER CONFIRMED; LIVE BLOCKED | Missing/mismatched pin fixtures fail closed; the user reported the configured Production pin matches the provider-console fingerprint. A live strict-SSH handshake remains untested. |
-| H-09 | LOCAL PASS; LIVE PARTIAL | The proved actor ID is rejected; Production approval and `release/*` were verified, and the fixed Staging reviewer gate is active. Environment variables/secrets could not be audited; no protected workflow run was dispatched. |
+| H-09 | LOCAL PASS; LIVE PARTIAL | The proved actor ID is rejected; Production approval and `release/*` were verified, and the fixed Staging reviewer gate is active. Both inventory path values and required secret names were confirmed with `aldoawp`; no secret values were accessed and no protected workflow run was dispatched. |
 | H-10 | BLOCKED | The workflow requests operator cleanup only after independent proof; no Environment password was set or removed. |
 | H-11 | LOCAL PASS; LIVE BLOCKED | Service-host targets are rejected until a disposable proof commit is recorded. The user-authorized Production candidate is flagged disposable; no host has been accessed. |
 | H-12 | LOCAL GATE READY; LIVE BLOCKED | The initial-access play no longer invokes fail2ban. A disposable-only workflow phase proves admin/deploy access before activation, checks both paths throughout the 10-minute test window, and attempts rollback and test-key cleanup on failure. Live evidence is still required. |

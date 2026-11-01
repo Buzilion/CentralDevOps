@@ -2,7 +2,14 @@
 
 ## Status
 
-**Current settings audited on 2026-11-01.** The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`. Staging has the fixed required-reviewer gate, allows self-review and administrator bypass, and accepts all branches. This supersedes the initial 2026-10-31 Staging no-reviewer decision; earlier evidence rows below are historical. The 2026-10-31 audit found no Environment variables or secrets, but the current CLI identity received HTTP 403 when listing their names, so their current presence is unverified.
+**Current settings audited on 2026-11-01 using the `aldoawp` keyring account.** The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`. Staging has the fixed required-reviewer gate, allows self-review and administrator bypass, and accepts all branches. This supersedes the initial 2026-10-31 Staging no-reviewer decision; earlier evidence rows below are historical.
+
+| Environment | `ANSIBLE_INVENTORY_PATH` | Secret names (values not accessed) |
+|---|---|---|
+| Staging | `inventories/staging/hosts.yml` | `ANSIBLE_SSH_PRIVATE_KEY`, `VPS_INITIAL_ACCESS_PASSWORD` |
+| Production | `inventories/production/hosts.yml` | `ANSIBLE_SSH_PRIVATE_KEY`, `VPS_INITIAL_ACCESS_PASSWORD` |
+
+The 2026-10-31 audit predates these Spec 03 Environment entries. The 2026-11-01 read-only audit confirmed the variable values and secret names; it did not retrieve any secret values or change settings.
 
 The current requirements are exactly two Environments: `Staging` requires reviewer approval and accepts all branches; `Production` requires approval by the repository owner, disallows administrator bypass, and accepts only protected `release/*` branches. The repository ruleset is a separate Task 5 gate for `main` and `release/*`.
 
@@ -19,7 +26,8 @@ The current requirements are exactly two Environments: `Staging` requires review
 | 2026-10-31 | `aldoawp` keyring account | Staging GET returned no protection rules and `deployment_branch_policy: null`, allowing all branches. |
 | 2026-11-01 | Read-only Environment metadata audit | Staging has a required reviewer, `prevent_self_review: false`, `can_admins_bypass: true`, and a null deployment-branch policy. This is the fixed Staging reviewer decision. |
 | 2026-11-01 | Read-only Environment metadata audit | Production still has a required reviewer, `can_admins_bypass: false`, and the `release/*` branch policy. |
-| 2026-11-01 | Current GitHub CLI identity | Environment variable/secret name-list requests returned HTTP 403; no Environment values were accessed and current `ANSIBLE_INVENTORY_PATH` presence is unverified. |
+| 2026-11-01 | Prior CLI identity | Environment name-list requests returned HTTP 403; this result was superseded by the `aldoawp` keyring audit below. |
+| 2026-11-01 | `aldoawp` keyring account | Confirmed both `ANSIBLE_INVENTORY_PATH` values and both required Environment secret names; no secret values were accessed. |
 | 2026-10-31 | `aldoawp` keyring account | A later audit found an unexpected Staging `required_reviewers` rule for `aldoawp`. Reapplied the intended `{"wait_timer":0,"reviewers":[]}` configuration; the follow-up GET returned no protection rules and a null branch policy. |
 | 2026-10-31 | `aldoawp` keyring account | A Staging PUT with both branch-policy booleans set to `false` was rejected with HTTP 422 and made no change. Omitting the policy correctly leaves it `null`, which allows all branches. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active with both ref patterns, required review/check rules, and only the `aldoawp` pull-request-only bypass. |
@@ -208,6 +216,8 @@ This preliminary entry is superseded by the initial foundation acceptance audit 
 **Task 6 status at initial audit:** repository and Environment secret/variable acceptance passed after owner cleanup, but the organization-level audit was blocked by the missing `admin:org` scope. See the post-remediation audit below for the final result.
 
 ## Post-remediation foundation audit (2026-10-31)
+
+This dated foundation audit records the state at that time, before Spec 03 added Environment-scoped bootstrap variables and secrets. See the current audit at the top of this runbook for their present names and inventory paths.
 
 | Requirement | Command or evidence | Result |
 |---|---|---|
