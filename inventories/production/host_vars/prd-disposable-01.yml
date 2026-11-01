@@ -1,0 +1,11 @@
+---
+ansible_host: 43.157.247.221
+provider_username: ubuntu
+# Set ansible_port only when it is not 22.
+physical_memory_mib: 3723 # User-reported host value; confirm before dispatch
+platform_reserve_mib: 1536 # Provisional Production reserve; review after baseline
+capacity_budget_mib: 2048 # Conservative budget under the Production ceiling
+bootstrap_disposable: true
+ssh_source_policy_exception: >-
+  No stable runner-compatible SSH source CIDR is available; revisit if the
+  runner/network changes.

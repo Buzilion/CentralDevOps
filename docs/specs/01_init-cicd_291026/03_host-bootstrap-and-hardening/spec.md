@@ -19,11 +19,27 @@ This spec does not configure Docker, application runtime, proxy, database, monit
 
 - The roadmap requires spec 01 to be fully checked off before spec 03 implementation starts. Its checklist must be complete before any task here is executed.
 - The roadmap's `Depends on` entry for spec 03 is spec 01. Follow the roadmap's numeric order as well: spec 02 establishes the dispatch App identity. Task 5 cannot be accepted until that identity is proven and its numeric actor ID is available; if it is not, fail closed rather than omit the rejection check.
-- The initial host OS target is Ubuntu Server 24.04 LTS. Confirm Sumopod offers this image before provisioning; do not silently substitute another release.
+- Spec 02 is now complete. Its sanitized [CentralDevOps proof run `41218423509`](https://github.com/Buzilion/CentralDevOps/actions/runs/41218423509) recorded actor `buzilion-dispatch-proof[bot]`; trusted run metadata resolved the decimal actor ID `350767931`, which is pinned in `deployment/tools/bootstrap_inventory.py`.
+- The initial host OS target is Ubuntu Server 24.04 LTS. On 2026-10-31, the user confirmed their Sumopod target is 24.04 and available to connect; verify the actual remote release before making changes and do not silently substitute another release.
 - Environments are exactly `Staging` and `Production`; each has a separate VPS and inventory. Host aliases follow `<env>-<purpose>-<number>`, for example `stg-aio-01` and `prd-aio-01`.
 - `VPS_INITIAL_ACCESS_PASSWORD` is a temporary CentralDevOps Environment secret for one target VPS at a time. The provider username is an inventory fact. Never put the password in a workflow input, inventory, variable, file, log, or artifact.
 - Production's GitHub Environment approval must happen before the job that receives Production secrets starts. Every SSH connection, including the first password-based one, uses a host-key pin verified against the independent provider-console fingerprint.
 - Do not add fabricated host facts or sample host-key material. Add real host inventory only when a host is provisioned and its facts and key have been independently verified.
+- Until the disposable-host proof is recorded, preflight accepts only a clearly named host whose alias purpose is `disposable` and whose `bootstrap_disposable` value is boolean `true`. On 2026-11-01, the user authorized using the empty VPS labeled `buz-prod-1`, intended for future Production use, as the proof target under the `prd-disposable-01` inventory alias. This does not waive the Production `release/*` branch policy or required-reviewer gate. Remove its disposable alias and test credentials, then reimage or otherwise restore a clean host before it carries Production service data. A reviewed proof-commit reference is required before service-host targets are accepted.
+
+### Pinned controller baseline
+
+Versions checked against official release sources on 2026-10-31:
+
+| Component | Pin | Compatibility/evidence |
+|---|---|---|
+| Ansible controller | `ansible-core==2.21.5` | Stable release published 2026-10-05; controller and target Python support includes Python 3.12. [Release](https://github.com/ansible/ansible/releases/tag/v2.21.5) · [maintenance policy](https://docs.ansible.com/projects/ansible/latest/reference_appendices/release_and_maintenance.html) |
+| `ansible.posix` | `2.2.2` | Galaxy metadata requires `ansible-core >=2.16.0`; [release](https://github.com/ansible-collections/ansible.posix/releases/tag/2.2.2). |
+| `community.general` | `13.5.0` | Galaxy metadata requires `ansible-core >=2.18.0`; [release](https://github.com/ansible-collections/community.general/releases/tag/13.5.0). |
+| Controller runner | `ubuntu-24.04`, Python 3.12 | GitHub-hosted Ubuntu 24.04 image; Python 3.12 is supported by the selected controller release. [Runner image](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md). |
+| Target | Ubuntu Server 24.04 LTS, Python 3.12 | User confirmed on 2026-10-31 that the Sumopod target is 24.04 and available to connect. The bootstrap playbook also checks the actual remote release before making changes. |
+
+`requirements.txt` pins `ansible-core`; `requirements.yml` pins the collections. No SSH connection was made during this implementation.
 
 ## Requirements
 
@@ -139,6 +155,7 @@ The first disposable VPS and the first Staging host must be measured after the p
 | D7 | Name the automation accounts `cdo-admin` and `cdo-deploy`; grant only `cdo-admin` passwordless sudo for infrastructure automation. | Generic `admin`/`deploy` usernames; require a sudo password | The names match the environment-specific SSH key identities and align the bootstrap contract with spec 04. Unattended Ansible needs a separate privileged admin identity; the deploy account remains unprivileged. | Yes |
 | D8 | Target Ubuntu Server 24.04 LTS. | Accept any provider image version | Pinning the OS release makes Ansible module support, package state, and later Docker installation reproducible. | Yes |
 | D9 | Use UFW for the base host firewall, default-deny inbound with only the required ports admitted. | Provider firewall only; hand-written iptables | UFW is the Ubuntu host firewall interface; keep provider-level filtering as an additional control where available. | Yes |
+| D10 | Use the user-authorized, empty `buz-prod-1` VPS as the disposable proof target under alias `prd-disposable-01`. | Require a separate disposable VPS | The host is not yet a service host and can be rebuilt; Production branch and reviewer protections remain mandatory, and the host must be restored before Production service use. | Yes |
 
 ### Invariants
 

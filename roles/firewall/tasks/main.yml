@@ -1,0 +1,57 @@
+---
+- name: Require an explicit SSH source-policy decision
+  ansible.builtin.assert:
+    that:
+      - >-
+        (ssh_source_cidrs is defined and ssh_source_cidrs | length > 0) or
+        (
+          ssh_source_policy_exception is defined and
+          ssh_source_policy_exception | trim | length > 0
+        )
+    fail_msg: Define stable SSH source CIDRs or document the per-host exception.
+  no_log: true
+
+- name: Allow SSH from each compatible stable source CIDR
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    port: "{{ ansible_port | default(22) | string }}"
+    proto: tcp
+  loop: "{{ ssh_source_cidrs | default([]) }}"
+  no_log: true
+
+- name: Preserve SSH access when no stable runner-compatible source is available
+  community.general.ufw:
+    rule: allow
+    port: "{{ ansible_port | default(22) | string }}"
+    proto: tcp
+  when: ssh_source_cidrs is not defined or ssh_source_cidrs | length == 0
+  no_log: true
+
+- name: Allow public HTTP and HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "80"
+    - "443"
+  no_log: true
+
+- name: Deny unsolicited inbound traffic by default
+  community.general.ufw:
+    direction: incoming
+    default: deny
+  no_log: true
+
+- name: Permit required outbound traffic by default
+  community.general.ufw:
+    direction: outgoing
+    default: allow
+  no_log: true
+
+- name: Enable UFW after allowing the active SSH path
+  community.general.ufw:
+    state: enabled
+    logging: low
+  no_log: true

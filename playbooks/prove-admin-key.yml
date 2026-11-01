@@ -1,0 +1,38 @@
+---
+- name: Prove fresh cdo-admin public-key access
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ bootstrap_admin_user }}"
+  become: false
+  vars:
+    ansible_ssh_common_args: >-
+      {{ bootstrap_ssh_hostkey_args }}
+      -o PreferredAuthentications=publickey
+      -o PasswordAuthentication=no
+      -o KbdInteractiveAuthentication=no
+  pre_tasks:
+    - name: Require one exact inventory host and the temporary admin-key file
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - >-
+            lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
+            length > 0
+        fail_msg: >-
+          Admin-key proof requires one exact host and a temporary private-key
+          file.
+      no_log: true
+
+  tasks:
+    - name: Confirm the authenticated remote identity is cdo-admin
+      ansible.builtin.command:
+        argv:
+          - id
+          - -un
+      register: admin_identity
+      changed_when: false
+      failed_when: >-
+        admin_identity.rc != 0 or
+        admin_identity.stdout | trim != bootstrap_admin_user
+      no_log: true

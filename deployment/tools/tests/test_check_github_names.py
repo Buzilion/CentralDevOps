@@ -189,16 +189,25 @@ class CheckGithubNamesTests(unittest.TestCase):
         self.assertNotIn(".github/workflows/dynamic.yml:6 N01", result.stdout)
 
     def test_forbidden_name_in_deploy_workflow_reports_f01(self) -> None:
-        self.write_workflow(
-            ".github/workflows/deploy-app.yml",
-            "name: deploy\n"
-            "env:\n"
-            "  ADMIN_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}\n",
+        forbidden_names = (
+            "ANSIBLE_SSH_PRIVATE_KEY",
+            "VPS_INITIAL_ACCESS_PASSWORD",
+            "ANSIBLE_VAULT_PASSWORD",
         )
+        for name in forbidden_names:
+            with self.subTest(name=name):
+                self.write_workflow(
+                    ".github/workflows/deploy-app.yml",
+                    "name: deploy\n"
+                    "env:\n"
+                    f"  FORBIDDEN: ${{{{ secrets.{name} }}}}\n",
+                )
 
-        result = self.run_checker()
+                result = self.run_checker()
 
-        self.assert_violation(result, ".github/workflows/deploy-app.yml", 3, "F01")
+                self.assert_violation(
+                    result, ".github/workflows/deploy-app.yml", 3, "F01"
+                )
 
     def test_malformed_catalog_exits_two(self) -> None:
         catalog_path = self.write_catalog()

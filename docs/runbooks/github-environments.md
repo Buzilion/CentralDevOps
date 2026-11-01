@@ -2,9 +2,9 @@
 
 ## Status
 
-**Applied and audited on 2026-10-31.** The `GH_TOKEN` environment override could not resolve the repository; after unsetting it, the `aldoawp` keyring account resolved it with `ADMIN` permission. The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`; Staging has no reviewers or branch restriction. This foundation work created no Environment secrets or variables. The owner has since removed the pre-existing Environment entries; repository and Environment counts are zero. The final organization-level F-10 audit also returned empty secret and variable inventories.
+**Current settings audited on 2026-11-01.** The repository is public on the Free plan. Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`. Staging has the fixed required-reviewer gate, allows self-review and administrator bypass, and accepts all branches. This supersedes the initial 2026-10-31 Staging no-reviewer decision; earlier evidence rows below are historical. The 2026-10-31 audit found no Environment variables or secrets, but the current CLI identity received HTTP 403 when listing their names, so their current presence is unverified.
 
-The current requirements are exactly two Environments: `Staging` accepts all branches without reviewers, and `Production` requires approval by the repository owner, disallows administrator bypass, and accepts only protected `release/*` branches. The repository ruleset is a separate Task 5 gate for `main` and `release/*`.
+The current requirements are exactly two Environments: `Staging` requires reviewer approval and accepts all branches; `Production` requires approval by the repository owner, disallows administrator bypass, and accepts only protected `release/*` branches. The repository ruleset is a separate Task 5 gate for `main` and `release/*`.
 
 ## Probe evidence
 
@@ -17,6 +17,9 @@ The current requirements are exactly two Environments: `Staging` accepts all bra
 | 2026-10-31 | `aldoawp` keyring account | `gh api repos/Buzilion/CentralDevOps/environments --jq '[.environments[].name] | sort'` returned `["Production","Staging"]`. |
 | 2026-10-31 | `aldoawp` keyring account | Production GET returned reviewer `aldoawp`, `prevent_self_review: false`, `can_admins_bypass: false`, and deployment-branch policy `{protected_branches:false,custom_branch_policies:true}`. Its branch-policy endpoint returned `release/*`. |
 | 2026-10-31 | `aldoawp` keyring account | Staging GET returned no protection rules and `deployment_branch_policy: null`, allowing all branches. |
+| 2026-11-01 | Read-only Environment metadata audit | Staging has a required reviewer, `prevent_self_review: false`, `can_admins_bypass: true`, and a null deployment-branch policy. This is the fixed Staging reviewer decision. |
+| 2026-11-01 | Read-only Environment metadata audit | Production still has a required reviewer, `can_admins_bypass: false`, and the `release/*` branch policy. |
+| 2026-11-01 | Current GitHub CLI identity | Environment variable/secret name-list requests returned HTTP 403; no Environment values were accessed and current `ANSIBLE_INVENTORY_PATH` presence is unverified. |
 | 2026-10-31 | `aldoawp` keyring account | A later audit found an unexpected Staging `required_reviewers` rule for `aldoawp`. Reapplied the intended `{"wait_timer":0,"reviewers":[]}` configuration; the follow-up GET returned no protection rules and a null branch policy. |
 | 2026-10-31 | `aldoawp` keyring account | A Staging PUT with both branch-policy booleans set to `false` was rejected with HTTP 422 and made no change. Omitting the policy correctly leaves it `null`, which allows all branches. |
 | 2026-10-31 | `aldoawp` keyring account | Repository ruleset `main` ID `26226141` is active with both ref patterns, required review/check rules, and only the `aldoawp` pull-request-only bypass. |
@@ -54,12 +57,16 @@ $ownerHandle = "aldoawp"
 $ownerId = gh api "users/$ownerHandle" --jq .id
 if (-not $ownerId) { throw "Could not resolve the confirmed repository-owner user ID." }
 
-$stagingBody = @'
+$stagingBody = @"
 {
   "wait_timer": 0,
-  "reviewers": []
+  "reviewers": [
+    { "type": "User", "id": $ownerId }
+  ],
+  "prevent_self_review": false,
+  "can_admins_bypass": true
 }
-'@
+"@
 $stagingBody | gh api -X PUT repos/Buzilion/CentralDevOps/environments/Staging --input -
 
 $productionBody = @"
@@ -106,8 +113,11 @@ gh api repos/Buzilion/CentralDevOps/environments/Production --jq '.deployment_br
 gh api repos/Buzilion/CentralDevOps/environments/Production/deployment-branch-policies --jq '[.branch_policies[] | {name,type}] | sort_by(.name)'
 # Expected: [{"name":"release/*","type":"branch"}]
 
-gh api repos/Buzilion/CentralDevOps/environments/Staging --jq '[.protection_rules[]? | select(.type=="required_reviewers")]'
-# Expected: []
+gh api repos/Buzilion/CentralDevOps/environments/Staging --jq '.protection_rules[] | select(.type=="required_reviewers") | {reviewers:[.reviewers[].reviewer.login],prevent_self_review}'
+# Expected: {"reviewers":["aldoawp"],"prevent_self_review":false}
+
+gh api repos/Buzilion/CentralDevOps/environments/Staging --jq '.can_admins_bypass'
+# Expected: true (current fixed Staging configuration)
 
 gh api repos/Buzilion/CentralDevOps/environments/Staging --jq '.deployment_branch_policy'
 # Expected: null (all branches are allowed)

@@ -1,0 +1,146 @@
+name: Bootstrap VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: GitHub Environment to bootstrap
+        required: true
+        type: choice
+        options:
+          - Staging
+          - Production
+      target_host:
+        description: Exact host alias from the selected Environment inventory
+        required: true
+        type: string
+
+concurrency:
+  group: bootstrap-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  preflight:
+    name: Secret-free preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+      BOOTSTRAP_ENVIRONMENT: ${{ inputs.target_environment }}
+      BOOTSTRAP_TARGET_HOST: ${{ inputs.target_host }}
+      BOOTSTRAP_REF: ${{ github.ref }}
+      BOOTSTRAP_ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate Environment, ref, and dispatch App identity
+        run: python3 deployment/tools/bootstrap_inventory.py --stage dispatch
+
+      - name: Install pinned Ansible controller and collections
+        run: |
+          set -euo pipefail
+          python3 -m venv .ansible-venv
+          . .ansible-venv/bin/activate
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            -r requirements.txt
+          ansible-galaxy collection install \
+            --requirements-file requirements.yml \
+            --collections-path ./.ansible/collections
+
+      - name: Validate exact target, pin, source policy, and capacity
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          python3 deployment/tools/bootstrap_inventory.py --stage target
+
+  bootstrap:
+    name: Bootstrap selected host
+    needs: preflight
+    if: needs.preflight.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    environment:
+      name: ${{ inputs.target_environment }}
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+      ANSIBLE_INVENTORY_PATH: ${{ vars.ANSIBLE_INVENTORY_PATH }}
+      BOOTSTRAP_ENVIRONMENT: ${{ inputs.target_environment }}
+      BOOTSTRAP_TARGET_HOST: ${{ inputs.target_host }}
+      BOOTSTRAP_REF: ${{ github.ref }}
+      BOOTSTRAP_ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install pinned Ansible controller and collections
+        run: |
+          set -euo pipefail
+          python3 -m venv .ansible-venv
+          . .ansible-venv/bin/activate
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            -r requirements.txt
+          ansible-galaxy collection install \
+            --requirements-file requirements.yml \
+            --collections-path ./.ansible/collections
+
+      - name: Recheck the Environment inventory mapping before SSH
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          python3 deployment/tools/bootstrap_inventory.py \
+            --stage all \
+            --require-environment-inventory
+
+      - name: Bootstrap accounts, updates, and firewall with initial access
+        env:
+          BOOTSTRAP_PHASE: initial-access
+          VPS_INITIAL_ACCESS_PASSWORD: ${{ secrets.VPS_INITIAL_ACCESS_PASSWORD }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Prove fresh cdo-admin key access
+        env:
+          BOOTSTRAP_PHASE: admin-key-proof
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Notify operator to remove the temporary password
+        run: |
+          notice='::notice title=Remove temporary access secret::'
+          notice+='The independent cdo-admin key login succeeded. '
+          notice+='Remove VPS_INITIAL_ACCESS_PASSWORD from the selected GitHub Environment.'
+          printf '%s\n' "$notice"
+
+      - name: Apply validated SSH hardening
+        env:
+          BOOTSTRAP_PHASE: ssh-hardening
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Verify a fresh admin-key login after hardening
+        env:
+          BOOTSTRAP_PHASE: post-hardening-proof
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py

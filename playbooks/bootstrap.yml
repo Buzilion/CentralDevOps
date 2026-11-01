@@ -1,0 +1,65 @@
+---
+- name: Bootstrap one fresh Ubuntu Server 24.04 host
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ provider_username }}"
+  become: true
+  vars:
+    ansible_password: >-
+      {{ lookup('ansible.builtin.env', 'VPS_INITIAL_ACCESS_PASSWORD') }}
+    ansible_become_password: >-
+      {{ lookup('ansible.builtin.env', 'VPS_INITIAL_ACCESS_PASSWORD') }}
+  pre_tasks:
+    - name: Require one exact inventory host and the provider credential
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - provider_username is defined
+          - >-
+            lookup('ansible.builtin.env', 'VPS_INITIAL_ACCESS_PASSWORD') |
+            length > 0
+          - bootstrap_admin_public_key is defined
+          - bootstrap_admin_public_key | length > 0
+        fail_msg: >-
+          Bootstrap requires one exact host and the selected Environment
+          credential.
+      no_log: true
+
+    - name: Gather minimum operating-system and memory facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - min
+          - hardware
+      no_log: true
+
+    - name: Require the reviewed Ubuntu Server release
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_version == "24.04"
+        fail_msg: Bootstrap supports Ubuntu Server 24.04 LTS only.
+      no_log: true
+
+    - name: Require observed memory to cover the configured reserve and budget
+      ansible.builtin.assert:
+        that:
+          - ansible_memtotal_mb is defined
+          - platform_reserve_mib is defined
+          - capacity_budget_mib is defined
+          - ansible_memtotal_mb >= platform_reserve_mib + capacity_budget_mib
+        fail_msg: >-
+          Observed host memory does not cover the configured reserve and
+          application budget.
+      no_log: true
+
+    - name: Report observed host memory for capacity evidence
+      ansible.builtin.debug:
+        msg: "Observed physical memory: {{ ansible_memtotal_mb }} MiB."
+
+  roles:
+    - common
+    - users
+    - firewall
+    - fail2ban

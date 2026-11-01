@@ -1,0 +1,41 @@
+---
+- name: Create the privileged infrastructure automation account
+  ansible.builtin.user:
+    name: "{{ bootstrap_admin_user }}"
+    groups:
+      - sudo
+    append: false
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+    state: present
+  no_log: true
+
+- name: Create the unprivileged deployment account
+  ansible.builtin.user:
+    name: "{{ bootstrap_deploy_user }}"
+    groups: []
+    append: false
+    shell: /bin/bash
+    create_home: true
+    password_lock: true
+    state: present
+  no_log: true
+
+- name: Install the reviewed admin public key
+  ansible.posix.authorized_key:
+    user: "{{ bootstrap_admin_user }}"
+    key: "{{ bootstrap_admin_public_key }}"
+    state: present
+    manage_dir: true
+  no_log: true
+
+- name: Grant cdo-admin passwordless sudo for Ansible privilege escalation
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/cdo-admin
+    content: "{{ bootstrap_admin_user }} ALL=(ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  no_log: true
