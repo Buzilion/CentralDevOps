@@ -28,7 +28,7 @@ from run_bootstrap_phase import (
 )
 
 
-FAIL2BAN_TEST_WINDOW_SECONDS = 600
+FAIL2BAN_TEST_WINDOW_SECONDS = 120
 FAIL2BAN_TEST_INTERVAL_SECONDS = 60
 
 PLAYBOOKS = {
@@ -184,13 +184,19 @@ def observe_access_paths(
     clock = monotonic or time.monotonic
     pause = sleep or time.sleep
     deadline = clock() + window_seconds
-    while True:
+    max_probe_count = (
+        window_seconds + interval_seconds - 1
+    ) // interval_seconds + 1
+    for _ in range(max_probe_count):
         prove_admin()
         prove_deploy()
         remaining = deadline - clock()
         if remaining <= 0:
             return
         pause(min(interval_seconds, remaining))
+    raise BootstrapPhaseError(
+        "fail2ban observation window did not complete before the probe limit"
+    )
 
 
 def _run_proof_sequence(
@@ -323,7 +329,9 @@ def execute_fail2ban_proof(
                 ) -> None:
                     print(
                         "Fail2ban is active; probing fresh admin and deploy "
-                        f"SSH sessions for {observation_window_seconds} seconds."
+                        f"SSH sessions every {probe_interval_seconds} seconds "
+                        f"for {observation_window_seconds} seconds.",
+                        flush=True,
                     )
                     observe_access_paths(
                         admin_probe,
