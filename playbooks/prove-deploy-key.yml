@@ -37,4 +37,3 @@
       failed_when: >-
         deploy_identity.rc != 0 or
         deploy_identity.stdout | trim != bootstrap_deploy_user
-      no_log: true

@@ -18,8 +18,11 @@ from bootstrap_inventory import (
     ROOT,
     validate_dispatch,
     validate_inventory_path,
+    validate_public_admin_key,
     validate_target,
 )
+
+ADMIN_KEY_VALIDATION_PHASE = "validate-admin-key"
 
 
 PHASE_PLAYBOOKS = {
@@ -93,10 +96,71 @@ def private_key_file(
             pass
 
 
+def _public_key_identity(value: object) -> tuple[str, str]:
+    if not isinstance(value, str):
+        raise BootstrapPhaseError("admin public key is missing")
+    parts = value.strip().split()
+    if len(parts) < 2:
+        raise BootstrapPhaseError("admin public key is malformed")
+    return parts[0], parts[1]
+
+
+def validate_admin_private_key(
+    private_key: str,
+    expected_public_key: object,
+    *,
+    directory: Path | None = None,
+    command_environment: Mapping[str, str] | None = None,
+) -> None:
+    try:
+        validate_public_admin_key(expected_public_key)
+    except BootstrapValidationError as exc:
+        raise BootstrapPhaseError(
+            "reviewed inventory admin public key is invalid"
+        ) from exc
+
+    expected_identity = _public_key_identity(expected_public_key)
+    keygen_environment = inventory_validation_environment(
+        os.environ if command_environment is None else command_environment
+    )
+    keygen_environment.pop("ANSIBLE_PRIVATE_KEY_FILE", None)
+
+    with private_key_file(private_key, directory) as key_path:
+        try:
+            result = subprocess.run(
+                ["ssh-keygen", "-y", "-P", "", "-f", str(key_path)],
+                env=keygen_environment,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise BootstrapPhaseError(
+                "ssh-keygen is required to validate the admin SSH key"
+            ) from exc
+
+    if result.returncode != 0:
+        raise BootstrapPhaseError(
+            "admin SSH private key is unreadable, invalid, or passphrase-protected"
+        )
+
+    try:
+        actual_identity = _public_key_identity(result.stdout)
+    except BootstrapPhaseError as exc:
+        raise BootstrapPhaseError(
+            "ssh-keygen did not return a valid admin public key"
+        ) from exc
+    if actual_identity != expected_identity:
+        raise BootstrapPhaseError(
+            "admin SSH private key does not match the reviewed inventory public key"
+        )
+
+
 def _validate_phase_inputs(
     phase: str, environment: Mapping[str, str], root: Path
-) -> tuple[Path, str, str]:
-    if phase not in PHASE_PLAYBOOKS:
+) -> tuple[Path, str, Mapping[str, object]]:
+    if phase not in (*PHASE_PLAYBOOKS, ADMIN_KEY_VALIDATION_PHASE):
         raise BootstrapPhaseError("bootstrap phase is invalid")
 
     target_environment = environment.get("BOOTSTRAP_ENVIRONMENT")
@@ -115,7 +179,7 @@ def _validate_phase_inputs(
             environment.get("ANSIBLE_INVENTORY_PATH"),
             required=True,
         )
-        validate_target(
+        host_variables = validate_target(
             root,
             target_environment,
             target_host,
@@ -128,7 +192,7 @@ def _validate_phase_inputs(
 
     if not isinstance(target_host, str):
         raise BootstrapPhaseError("target host must be one exact inventory alias")
-    return inventory_path, target_host, str(PHASE_PLAYBOOKS[phase])
+    return inventory_path, target_host, host_variables
 
 
 def execute_phase(
@@ -138,10 +202,29 @@ def execute_phase(
     environment: Mapping[str, str] | None = None,
 ) -> int:
     phase_environment = dict(os.environ if environment is None else environment)
-    inventory_path, target_host, playbook = _validate_phase_inputs(
+    inventory_path, target_host, host_variables = _validate_phase_inputs(
         phase, phase_environment, root
     )
-    command = build_command(inventory_path.as_posix(), target_host, Path(playbook))
+
+    if phase == ADMIN_KEY_VALIDATION_PHASE:
+        private_key = phase_environment.pop("ANSIBLE_SSH_PRIVATE_KEY", None)
+        if not private_key:
+            raise BootstrapPhaseError("admin SSH key secret is missing")
+        phase_environment.pop("VPS_INITIAL_ACCESS_PASSWORD", None)
+        temporary_directory = Path(
+            phase_environment.get("RUNNER_TEMP", tempfile.gettempdir())
+        )
+        validate_admin_private_key(
+            private_key,
+            host_variables.get("bootstrap_admin_public_key"),
+            directory=temporary_directory,
+            command_environment=inventory_validation_environment(phase_environment),
+        )
+        return 0
+
+    command = build_command(
+        inventory_path.as_posix(), target_host, PHASE_PLAYBOOKS[phase]
+    )
 
     if phase == "initial-access":
         if not phase_environment.get("VPS_INITIAL_ACCESS_PASSWORD"):
@@ -188,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--phase",
-        choices=tuple(PHASE_PLAYBOOKS),
+        choices=(*PHASE_PLAYBOOKS, ADMIN_KEY_VALIDATION_PHASE),
         default=os.environ.get("BOOTSTRAP_PHASE"),
     )
     parser.add_argument(

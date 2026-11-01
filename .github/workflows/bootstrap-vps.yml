@@ -109,6 +109,15 @@ jobs:
             --stage all \
             --require-environment-inventory
 
+      - name: Verify the admin private key matches the reviewed inventory key
+        env:
+          BOOTSTRAP_PHASE: validate-admin-key
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
       - name: Bootstrap accounts, updates, and firewall with initial access
         env:
           BOOTSTRAP_PHASE: initial-access
