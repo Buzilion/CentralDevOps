@@ -43,7 +43,6 @@
       failed_when: >-
         admin_identity.rc != 0 or
         admin_identity.stdout | trim != bootstrap_admin_user
-      no_log: true
 
   tasks:
     - name: Add or remove the temporary cdo-deploy proof key
