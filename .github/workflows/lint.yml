@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -54,6 +56,52 @@ jobs:
             --no-input \
             "zizmor==$ZIZMOR_VERSION"
           "$ZIZMOR_VENV_DIR/bin/zizmor" --no-ignores .github/
+
+      - name: Install pinned Ansible controller and collections
+        run: |
+          set -euo pipefail
+          python3 -m venv .ansible-venv
+          . .ansible-venv/bin/activate
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            -r requirements-dev.txt
+          ansible-galaxy collection install \
+            --requirements-file requirements.yml \
+            --collections-path ./.ansible/collections
+
+      - name: Validate inventories, SSH policy, playbooks, and tests
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          ansible-inventory --inventory inventories/staging/hosts.yml --list
+          ansible-inventory --inventory inventories/production/hosts.yml --list
+          ansible-config dump --only-changed | grep -Eq 'HOST_KEY_CHECKING.*True'
+
+      - name: Check bootstrap playbook syntax and lint
+        env:
+          RUN_ANSIBLE_INVENTORY_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          for playbook in \
+            playbooks/bootstrap.yml \
+            playbooks/prove-admin-key.yml \
+            playbooks/harden-ssh.yml; do
+            ansible-playbook \
+              --inventory inventories/staging/hosts.yml \
+              --syntax-check "$playbook"
+          done
+          ansible-lint \
+            playbooks/bootstrap.yml \
+            playbooks/prove-admin-key.yml \
+            playbooks/harden-ssh.yml \
+            roles/common \
+            roles/users \
+            roles/firewall \
+            roles/ssh_hardening \
+            roles/fail2ban
+          python -m unittest discover -s deployment/tools/tests
 
   naming-and-secrets:
     name: naming-and-secrets

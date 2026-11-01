@@ -115,6 +115,8 @@ Both repository kinds use exactly two Environments: **`Staging`** and **`Product
 | Deployment branches | Protected `release/*` only | `main` (or release branches) only |
 | Secrets | Infrastructure credentials, `DEPLOY_SSH_PRIVATE_KEY`, sealed-bundle age key | App runtime secrets, dispatch App credentials |
 
+CentralDevOps `Staging` also has a required reviewer gate while accepting runs from any branch. The current repository setting permits self-review and administrator bypass; app-side `Staging` remains reviewer-free by default.
+
 **Approvers:** production deployments must be approval-gated in CentralDevOps `Production`. Initially the repository owner is the required approver. Once the deployment team is assigned, make the team the required approver, or add it alongside the owner if both approvals are decided to be required. Keep the Environment-to-VPS mapping fixed (§8.2) so the approval always applies to the host actually targeted.
 
 ### 4.2 Naming rules

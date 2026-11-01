@@ -1,0 +1,15 @@
+---
+bootstrap_admin_user: cdo-admin
+bootstrap_deploy_user: cdo-deploy
+bootstrap_admin_public_key: ""
+bootstrap_capacity_reference:
+  physical_memory_mib: 2048
+  platform_reserve_mib: 1024
+  capacity_budget_mib: 1024
+bootstrap_ssh_hostkey_args: >-
+  -o UserKnownHostsFile={{ inventory_dir }}/known_hosts
+  -o GlobalKnownHostsFile=/dev/null
+  -o StrictHostKeyChecking=yes
+  -o UpdateHostKeys=no
+  -o IdentitiesOnly=yes
+ansible_ssh_common_args: "{{ bootstrap_ssh_hostkey_args }}"

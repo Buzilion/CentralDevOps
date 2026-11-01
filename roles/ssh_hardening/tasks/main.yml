@@ -1,0 +1,93 @@
+---
+- name: Inspect the existing CentralDevOps SSH policy file
+  ansible.builtin.stat:
+    path: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
+  register: ssh_hardening_file
+
+- name: Require the existing SSH policy file to be a regular file
+  ansible.builtin.assert:
+    that:
+      - not ssh_hardening_file.stat.islnk
+    fail_msg: Refusing to replace a symlinked SSH hardening file.
+  when: ssh_hardening_file.stat.exists
+
+- name: Save the prior SSH policy file when one exists
+  ansible.builtin.slurp:
+    src: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
+  register: ssh_hardening_previous
+  when: ssh_hardening_file.stat.exists
+
+- name: Install and validate the key-only SSH policy
+  block:
+    - name: Install the reviewed SSH hardening drop-in
+      ansible.builtin.template:
+        src: centraldevops-sshd.conf.j2
+        dest: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Validate the complete effective sshd configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/sshd
+          - -t
+      changed_when: false
+
+    - name: Read the effective SSH authentication policy
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/sshd
+          - -T
+      register: sshd_effective_config
+      changed_when: false
+
+    - name: Require key-only SSH and disabled root and password access
+      ansible.builtin.assert:
+        that:
+          - >-
+            'pubkeyauthentication yes' in
+            sshd_effective_config.stdout_lines
+          - >-
+            'authenticationmethods publickey' in
+            sshd_effective_config.stdout_lines
+          - >-
+            'permitrootlogin no' in
+            sshd_effective_config.stdout_lines
+          - >-
+            'passwordauthentication no' in
+            sshd_effective_config.stdout_lines
+          - >-
+            'kbdinteractiveauthentication no' in
+            sshd_effective_config.stdout_lines
+        fail_msg: >-
+          Effective sshd settings do not satisfy the key-only access policy.
+
+    - name: >-
+        Reload SSH only after the candidate configuration passes validation
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+  rescue:
+    - name: >-
+        Restore the prior SSH policy file after a validation or reload failure
+      ansible.builtin.copy:
+        content: "{{ ssh_hardening_previous.content | b64decode }}"
+        dest: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: ssh_hardening_file.stat.exists
+
+    - name: Remove the candidate SSH policy when no prior file existed
+      ansible.builtin.file:
+        path: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
+        state: absent
+      when: not ssh_hardening_file.stat.exists
+
+    - name: Stop after restoring the prior SSH policy
+      ansible.builtin.fail:
+        msg: >-
+          SSH policy application, validation, or reload failed. The prior
+          drop-in was restored; verify the active SSH service through the
+          provider console before retrying.

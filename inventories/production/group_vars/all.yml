@@ -1,0 +1,15 @@
+---
+bootstrap_admin_user: cdo-admin
+bootstrap_deploy_user: cdo-deploy
+bootstrap_admin_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHQLmWLK9nIM4KwXXJDwulsj+DPyv3e6YvDBrg+tRl2t buzilion-vps-prod"
+bootstrap_capacity_reference:
+  physical_memory_mib: 3723 # User-reported host value; confirm before dispatch
+  platform_reserve_mib: 1536 # Provisional Production reserve; review after baseline
+  capacity_budget_mib: 2048 # Conservative budget under the Production ceiling
+bootstrap_ssh_hostkey_args: >-
+  -o UserKnownHostsFile={{ inventory_dir }}/known_hosts
+  -o GlobalKnownHostsFile=/dev/null
+  -o StrictHostKeyChecking=yes
+  -o UpdateHostKeys=no
+  -o IdentitiesOnly=yes
+ansible_ssh_common_args: "{{ bootstrap_ssh_hostkey_args }}"

@@ -100,7 +100,7 @@ Before hardening any Staging or Production host, a successful second-login path 
 
 - Exactly two GitHub Environments exist in CentralDevOps and each app repository: `Staging` and `Production`. Each Environment maps to its corresponding VPS; there is no Environment per VPS. The two environments have separate hosts, inventories, deployment/decryption credentials and encrypted backup repositories.
 - A request for one Environment cannot resolve to the other Environment's inventory, host, key or registry entry. Mismatches fail closed before the deploy stage.
-- CentralDevOps `Staging` accepts runs from any branch without approval; CentralDevOps `Production` accepts only protected `release/*` runs and requires approval for deployments and infrastructure changes. App Production Environments allow only `main` or approved release branches and do not add a second reviewer gate by default.
+- CentralDevOps `Staging` accepts runs from any branch and requires its fixed reviewer gate; CentralDevOps `Production` accepts only protected `release/*` runs and requires approval for deployments and infrastructure changes. App Production Environments allow only `main` or approved release branches and do not add a second reviewer gate by default.
 - GitHub Actions permissions are least-privilege. Untrusted values are strictly validated, never interpolated directly into shell commands. The dispatch GitHub App identity is rejected by infrastructure workflows.
 - No PAT, provider initial-access password, deploy SSH key, admin key, registry pull token or plaintext runtime secret is stored in an app repository. No secret is printed, written to an artifact, committed, passed as a plaintext workflow input or baked into an image.
 

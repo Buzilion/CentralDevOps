@@ -18,7 +18,7 @@ Make the CentralDevOps repository safe to build on before any infrastructure or 
 - The repository today holds only documentation (`docs/`), the agent skills (`.agents/`) and a one-line `README.md`. There are no workflows, roles, inventories or code. Remote: `https://github.com/Buzilion/CentralDevOps.git`, default branch `main`.
 - Every later spec adds workflows that use Environment secrets (SSH keys, age key, S3 and Grafana credentials). The protection rules and review gates must exist first, otherwise the first privileged workflow runs unprotected.
 - The v5 design (§16 step 1) puts "structure, `ansible.cfg`, inventories, naming standard, CODEOWNERS, registry schema" first. This spec delivers the naming standard enforcement, CODEOWNERS and structure documentation; Ansible files move to spec 03 and the registry schema to spec 06 (see the roadmap).
-- **Plan risk.** Task 1 verified that the repository is public and the Buzilion organization is on Free, a supported combination for Environment protection rules. The API now confirms the Production reviewer rule with administrator bypass disabled and the `release/*` policy, plus Staging's unrestricted branch policy. If the repository becomes private, required-reviewer protection requires Enterprise; re-audit before relying on the gate.
+- **Plan risk.** Task 1 verified that the repository is public and the Buzilion organization is on Free, a supported combination for Environment protection rules. Production has a reviewer rule with administrator bypass disabled and the `release/*` policy. Staging uses the fixed reviewer gate, accepts all branches, and permits self-review and administrator bypass. If the repository becomes private, required-reviewer protection requires Enterprise; re-audit before relying on the gates.
 - **Self-approval limit.** GitHub does not let a pull request author approve their own pull request. With a single human owner, "code-owner review required" cannot be satisfied. See Decision D6.
 
 ## Requirements
@@ -26,7 +26,7 @@ Make the CentralDevOps repository safe to build on before any infrastructure or 
 | ID | Statement | Source |
 |---|---|---|
 | F-01 | CentralDevOps has exactly two deployment Environments, `Staging` and `Production`; each targets its corresponding VPS, and no additional Environment is created per VPS. | SEC-01 |
-| F-02 | `Production` requires approval by the repository owner, does not allow administrator bypass, and accepts runs only from protected branches matching `release/*`. `Staging` requires no approval and accepts runs from any branch. Self-review of an approval is permitted while the owner is the sole approver. | SEC-05, v5 §4.1 |
+| F-02 | `Production` requires approval by the repository owner, does not allow administrator bypass, and accepts runs only from protected branches matching `release/*`. `Staging` requires a reviewer gate and accepts runs from any branch. Self-review is permitted while the owner is the sole approver. | SEC-05, v5 §4.1 |
 | F-03 | Changes to `apps/**`, `deployment/**`, `roles/**` and `.github/workflows/**` need code-owner review before merging into `main` or `release/*`. `.github/CODEOWNERS` and `.github/rulesets/**` are covered by the same rule. | SEC-13, NFR-17 |
 | F-04 | `main` and `release/*` branches cannot be force-pushed or deleted. Pull requests into either require one approval, code-owner review and passing `workflow-lint` and `naming-and-secrets` checks. | SEC-13, SEC-14 |
 | F-05 | Every workflow and action under `.github/` pins third-party actions to a 40-character commit SHA, declares explicit least-privilege `permissions`, and never interpolates `github.event` or `inputs` values directly into shell. | SEC-14, NFR-15 |
@@ -61,9 +61,9 @@ No other directory is created. Empty skeleton folders are not added; later specs
 
 | Setting | `Staging` | `Production` |
 |---|---|---|
-| Required reviewers | none | repository owner (user) |
-| Self-review prevention | n/a | off (sole approver) |
-| Administrator bypass | not applicable | disabled |
+| Required reviewers | repository owner (user) | repository owner (user) |
+| Self-review prevention | off (sole approver) | off (sole approver) |
+| Administrator bypass | enabled | disabled |
 | Deployment branches | all branches | custom policy, branches matching `release/*` only |
 | Wait timer | none | none |
 
@@ -120,7 +120,7 @@ Workflow inputs and event fields reach shell only through `env:` variables, neve
 | D5 | Settings are applied with `gh api` from the runbook and the ruleset payload is committed under `.github/rulesets/`. | Terraform GitHub provider; manual UI only | One command per setting, reviewable payload, no new tool, repeatable audit. | Yes |
 | D6 | **Decision:** `aldoawp` is the only repository collaborator and listed codeowner, so the ruleset adds only that user as a `pull_request`-only bypass actor. Remove the bypass when an independent codeowner/reviewer is added. | Drop code-owner review; allow all admins to bypass | The owner cannot approve their own pull request. A user-specific, PR-only bypass is narrower than weakening the review rule or allowing direct bypass. | Yes |
 | D7 | **Decision:** `CODEOWNERS` lists the repository owner handle `@aldoawp` unless the organization explicitly designates a team. | Guess a team name | A wrong owner silently disables the review requirement, so Task 2 checks the file with GitHub's CODEOWNERS error report. | Yes |
-| D8 | `Staging` allows self-review and has no reviewers. | Reviewer on `Staging` | The PRD requires no Staging approval (DEP-08). | Yes |
+| D8 | `Staging` requires one reviewer gate, allows self-review while the owner is the sole reviewer, and accepts all branches. | No reviewer on `Staging` | The platform owner fixed the additional Staging approval while retaining branch-based testing. | Yes |
 | D9 | Runbooks live in `docs/runbooks/`. | `docs/design/`, `docs/notes/` | `docs/design/` holds standards and `docs/notes/` holds evolving source material. Runbooks are operated procedures. | Yes |
 
 ## Versions
@@ -144,7 +144,7 @@ SHA pins and checksums are fixed at implementation time. Re-check the versions t
 | No workflow step uses an unpinned third-party action. | `zizmor` in `workflow-lint`; negative fixture in Task 4. |
 | `deploy-app.yml` can never read the admin key, the provider initial password or the Vault password. | Rule `F01`; unit test with a fixture workflow. |
 | Only two Environments exist. | `gh api repos/Buzilion/CentralDevOps/environments --jq "[.environments[].name] \| sort"` returns `["Production","Staging"]`. |
-| Staging accepts any branch without approval; Production accepts only `release/*`, requires the owner's approval, and cannot be bypassed by administrators. | Environment audit in the runbook returns no Staging reviewers and a null branch policy; Production has the required-reviewers rule, `can_admins_bypass: false`, and a `release/*` branch policy. |
+| Staging accepts any branch and requires reviewer approval; Production accepts only `release/*`, requires the owner's approval, and cannot be bypassed by administrators. | Environment audit in the runbook confirms the Staging reviewer rule and null branch policy; Production has the required-reviewers rule, `can_admins_bypass: false`, and a `release/*` branch policy. |
 | `main` and `release/*` accept changes only through reviewed, checked pull requests. | Ruleset audit; Task 5 attempts direct pushes and unreviewed merges against both patterns and both are refused. |
 | No private key material is committed. | Rule `K01` plus the history scan in Task 6. |
 

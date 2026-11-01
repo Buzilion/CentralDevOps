@@ -10,17 +10,17 @@ The target model is exactly two GitHub Environments, not one per VPS. The follow
 
 | Environment | Configured behavior |
 |---|---|
-| `Staging` | No required reviewers; accepts runs from any branch. |
+| `Staging` | Requires repository-owner review (self-review allowed); accepts runs from any branch. |
 | `Production` | Requires repository-owner approval without administrator bypass; accepts runs from `release/*` branches. |
 
-In the design, each Environment maps to its corresponding deployment target. The current API audit confirms the Production reviewer and `release/*` policy; Staging has no branch restriction. See the [GitHub Environments runbook](docs/runbooks/github-environments.md).
+In the design, each Environment maps to its corresponding deployment target. The current API audit confirms the Staging reviewer gate with no branch restriction and the Production `release/*` gate without administrator bypass. See the [GitHub Environments runbook](docs/runbooks/github-environments.md).
 
 ## Documentation
 
 - **Requirements:** [Parent PRD](docs/prd/01_init-cicd_291026/prd-v1.md) · [Access and secrets PRD](docs/prd/01_init-cicd_291026/access-and-secrets-v1.md)
 - **Design:** [Naming and repository conventions](docs/design/naming-and-repository-conventions.md) · [Variables and secrets](docs/design/variables-and-secrets.md) · [Infrastructure contracts and invariants](docs/design/infrastructure-contracts-and-invariants.md) · [Source design (v5)](docs/notes/requirements/02_init-cicd_291026/v5/centraldevops-complete-infrastructure-design.md)
 - **Specifications:** [Spec roadmap](docs/specs/01_init-cicd_291026/00_spec-roadmap.md) · [Foundation and access spec](docs/specs/01_init-cicd_291026/01_foundation-and-access/spec.md)
-- **Operations:** [GitHub Environments apply and audit runbook](docs/runbooks/github-environments.md)
+- **Operations:** [GitHub Environments apply and audit runbook](docs/runbooks/github-environments.md) · [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md)
 
 ## Target directory map — implementation added by later specs
 
@@ -59,6 +59,6 @@ On Windows, use `py -3` in place of `python3`.
 
 GitHub's [Environments REST documentation](https://docs.github.com/en/rest/deployments/environments) states that public repositories support Environments, deployment-branch policies, required reviewers, and wait timers on current plans (legacy plans excluded). Private or internal repositories need Pro, Team, or Enterprise for Environment and deployment-branch features, and Enterprise for required-reviewer or wait-timer protection rules.
 
-**Repository-specific status (2026-10-31):** With `GH_TOKEN` unset, `gh repo view Buzilion/CentralDevOps --json nameWithOwner,visibility,viewerPermission` succeeded as `aldoawp` with `PUBLIC` visibility and `ADMIN` permission. The Buzilion organization plan is `Free`. The Environment list is exactly `["Production","Staging"]`; Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`, while Staging has no approval or branch restriction. This foundation work created no Environment secrets or variables.
+**Repository-specific status (2026-11-01):** With `GH_TOKEN` unset, `gh repo view Buzilion/CentralDevOps --json nameWithOwner,visibility,viewerPermission` succeeded as `aldoawp` with `PUBLIC` visibility and `ADMIN` permission. The Buzilion organization plan is `Free`. The Environment list is exactly `["Production","Staging"]`; Production requires approval by `aldoawp`, disallows administrator bypass, and accepts only `release/*`. Staging requires the fixed reviewer gate, permits self-review and administrator bypass, and accepts runs from any branch. The current settings are documented in the [GitHub Environments runbook](docs/runbooks/github-environments.md).
 
 Use the [GitHub Environments runbook](docs/runbooks/github-environments.md) to re-audit after any visibility or plan change. Environment protection settings and the active `main`/`release/*` ruleset (ID `26226141`) are verified; the canonical ruleset payload is maintained at `.github/rulesets/main.json`.
