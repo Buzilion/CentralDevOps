@@ -71,6 +71,31 @@ class BootstrapPhaseTests(unittest.TestCase):
                     self.assertEqual(key_path.stat().st_mode & 0o777, 0o600)
             self.assertFalse(key_path.exists())
 
+    def test_base64_admin_key_is_written_as_exact_bytes(self) -> None:
+        private_key = b"synthetic admin key bytes\n"
+        secret = "base64:" + base64.b64encode(private_key).decode("ascii")
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            with RUN_BOOTSTRAP_PHASE.private_key_file(
+                secret, Path(directory)
+            ) as key_path:
+                self.assertEqual(key_path.read_bytes(), private_key)
+            self.assertFalse(key_path.exists())
+
+    def test_invalid_base64_admin_key_is_rejected_without_a_file(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            with self.assertRaisesRegex(
+                RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+                "invalid base64 payload",
+            ):
+                with RUN_BOOTSTRAP_PHASE.private_key_file(
+                    "base64:not-valid-base64", Path(directory)
+                ):
+                    self.fail("invalid base64 should not create a key file")
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_admin_key_file_is_removed_after_failure(self) -> None:
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
