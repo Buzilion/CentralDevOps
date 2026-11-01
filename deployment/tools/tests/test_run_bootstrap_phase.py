@@ -168,23 +168,48 @@ class AdminKeyValidationTests(unittest.TestCase):
 
         self.assertEqual(list(self.runner_temp.iterdir()), [])
 
-    def test_keygen_failure_reports_unusable_private_key(self) -> None:
+    def test_invalid_key_format_reports_safe_specific_diagnostic(self) -> None:
         with mock.patch.object(
             RUN_BOOTSTRAP_PHASE.subprocess,
             "run",
             return_value=SimpleNamespace(
-                returncode=1, stdout="", stderr="invalid format"
+                returncode=255,
+                stdout="",
+                stderr='Load key "/tmp/private-key": invalid format',
             ),
         ):
             with self.assertRaisesRegex(
                 RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
-                "invalid or unreadable",
-            ):
+                "ssh-keygen reported invalid format",
+            ) as error:
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
                     self.admin_private_key,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
+        self.assertNotIn("/tmp/private-key", str(error.exception))
+        self.assertEqual(list(self.runner_temp.iterdir()), [])
+
+    def test_libcrypto_failure_reports_safe_diagnostic(self) -> None:
+        with mock.patch.object(
+            RUN_BOOTSTRAP_PHASE.subprocess,
+            "run",
+            return_value=SimpleNamespace(
+                returncode=1,
+                stdout="",
+                stderr='Load key "/tmp/private-key": error in libcrypto',
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+                "could not be decoded by OpenSSH/libcrypto",
+            ) as error:
+                RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
+                    self.admin_private_key,
+                    self.admin_public_key,
+                    directory=self.runner_temp,
+                )
+        self.assertNotIn("/tmp/private-key", str(error.exception))
         self.assertEqual(list(self.runner_temp.iterdir()), [])
 
     def test_passphrase_failure_is_reported_without_revealing_stderr(self) -> None:

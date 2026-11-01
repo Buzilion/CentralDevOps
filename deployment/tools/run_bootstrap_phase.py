@@ -105,6 +105,29 @@ def _public_key_identity(value: object) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def _keygen_failure_error(stderr: str, returncode: int) -> BootstrapPhaseError:
+    diagnostic = " ".join(stderr.casefold().split())
+    if "passphrase" in diagnostic:
+        return BootstrapPhaseError(
+            "admin SSH private key is passphrase-protected; "
+            "the workflow requires an unencrypted key"
+        )
+    if "invalid format" in diagnostic:
+        return BootstrapPhaseError(
+            "admin SSH private key could not be parsed: ssh-keygen reported "
+            "invalid format; check that the complete private-key file was supplied"
+        )
+    if "error in libcrypto" in diagnostic:
+        return BootstrapPhaseError(
+            "admin SSH private key could not be decoded by OpenSSH/libcrypto; "
+            "check for a passphrase, unsupported encoding, or damaged key data"
+        )
+    return BootstrapPhaseError(
+        "ssh-keygen could not parse the admin SSH private key "
+        f"(exit code {returncode})"
+    )
+
+
 def validate_admin_private_key(
     private_key: str,
     expected_public_key: object,
@@ -141,14 +164,7 @@ def validate_admin_private_key(
             ) from exc
 
     if result.returncode != 0:
-        if "passphrase" in result.stderr.casefold():
-            raise BootstrapPhaseError(
-                "admin SSH private key is passphrase-protected; "
-                "the workflow requires an unencrypted key"
-            )
-        raise BootstrapPhaseError(
-            "admin SSH private key is invalid or unreadable"
-        )
+        raise _keygen_failure_error(result.stderr, result.returncode)
 
     try:
         actual_identity = _public_key_identity(result.stdout)
