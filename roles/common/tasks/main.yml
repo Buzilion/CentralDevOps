@@ -40,7 +40,7 @@
 - name: Check whether package updates require an operator-controlled reboot
   ansible.builtin.stat:
     path: /var/run/reboot-required
-  register: bootstrap_reboot_required
+  register: common_reboot_required
   no_log: true
 
 - name: Report when an operator-controlled reboot is required
@@ -48,4 +48,4 @@
     msg: >-
       Package updates require a reboot; schedule it manually after access is
       verified.
-  when: bootstrap_reboot_required.stat.exists
+  when: common_reboot_required.stat.exists
