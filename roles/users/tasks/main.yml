@@ -40,11 +40,29 @@
   ansible.builtin.assert:
     that:
       - >-
-        bootstrap_admin_public_key in
-        (users_admin_authorized_keys.content | b64decode).splitlines()
+        (
+          users_admin_authorized_keys.content
+          | b64decode
+          | regex_search(users_admin_public_key_pattern)
+        ) is not none
     fail_msg: >-
       The reviewed admin public key was not found in
       /home/{{ bootstrap_admin_user }}/.ssh/authorized_keys.
+  vars:
+    users_admin_public_key_type: "{{ bootstrap_admin_public_key.split()[0] }}"
+    users_admin_public_key_blob: "{{ bootstrap_admin_public_key.split()[1] }}"
+    users_admin_public_key_pattern: >-
+      (?mx)
+      ^[ \t]*
+      (?!\#)
+      (?:
+        (?:[^ \t\r\n"]+|"(?:\\.|[^"\\\r\n])*")+
+        [ \t]+
+      )?
+      {{ users_admin_public_key_type | regex_escape }}
+      [ \t]+
+      {{ users_admin_public_key_blob | regex_escape }}
+      (?:[ \t]|\r?$)
 
 - name: Grant cdo-admin passwordless sudo for Ansible privilege escalation
   ansible.builtin.copy:
