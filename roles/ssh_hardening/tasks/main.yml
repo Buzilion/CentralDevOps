@@ -39,7 +39,7 @@
         argv:
           - /usr/sbin/sshd
           - -T
-      register: sshd_effective_config
+      register: ssh_hardening_effective_config
       changed_when: false
 
     - name: Require key-only SSH and disabled root and password access
@@ -47,19 +47,19 @@
         that:
           - >-
             'pubkeyauthentication yes' in
-            sshd_effective_config.stdout_lines
+            ssh_hardening_effective_config.stdout_lines
           - >-
             'authenticationmethods publickey' in
-            sshd_effective_config.stdout_lines
+            ssh_hardening_effective_config.stdout_lines
           - >-
             'permitrootlogin no' in
-            sshd_effective_config.stdout_lines
+            ssh_hardening_effective_config.stdout_lines
           - >-
             'passwordauthentication no' in
-            sshd_effective_config.stdout_lines
+            ssh_hardening_effective_config.stdout_lines
           - >-
             'kbdinteractiveauthentication no' in
-            sshd_effective_config.stdout_lines
+            ssh_hardening_effective_config.stdout_lines
         fail_msg: >-
           Effective sshd settings do not satisfy the key-only access policy.
 
