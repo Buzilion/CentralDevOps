@@ -130,7 +130,7 @@ General handling:
 - **How to get it:**
   1. Generate one ed25519 key pair per Environment, with an empty passphrase because the key is used unattended: `ssh-keygen -t ed25519 -C "cdo-admin-staging" -f cdo-admin-staging` (and `cdo-admin-production`).
   2. Commit the **public** key to the Environment's inventory data (section 9) so `bootstrap-vps.yml` installs it on the admin account.
-  3. Set the whole private key file, including the `BEGIN`/`END` lines, as the secret. Delete the local copy.
+  3. Set the secret to `base64:` followed by a single-line Base64 encoding of the complete private-key file (including the `BEGIN`/`END` lines). For example, from a trusted WSL or Linux shell, run `{ printf 'base64:'; base64 -w0 cdo-admin-production; } | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Production`. Base64 is only an encoding, not encryption; treat the value as the private key and never print or log it. The bootstrap runner also accepts raw private-key text for compatibility.
 - **Notes:** Keep an encrypted copy in the password manager only if operators need the admin identity outside GitHub (for example the database SSH tunnel, DB-07). Rotation: section 11.
 
 ### 4.2 `ANSIBLE_VAULT_PASSWORD` (only if Ansible Vault is used)
