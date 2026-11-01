@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import os
 import subprocess
 import sys
@@ -23,6 +25,7 @@ from bootstrap_inventory import (
 )
 
 ADMIN_KEY_VALIDATION_PHASE = "validate-admin-key"
+BASE64_PRIVATE_KEY_PREFIX = "base64:"
 
 
 PHASE_PLAYBOOKS = {
@@ -58,23 +61,44 @@ def build_command(inventory_path: str, target: str, playbook: Path) -> list[str]
     ]
 
 
+def private_key_bytes(secret_value: str) -> bytes:
+    if not isinstance(secret_value, str) or not secret_value:
+        raise BootstrapPhaseError("admin SSH key secret is missing")
+
+    if secret_value.startswith(BASE64_PRIVATE_KEY_PREFIX):
+        encoded_key = secret_value[len(BASE64_PRIVATE_KEY_PREFIX) :]
+        try:
+            key_bytes = base64.b64decode(encoded_key, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise BootstrapPhaseError(
+                "admin SSH key secret has an invalid base64 payload"
+            ) from exc
+        if not key_bytes:
+            raise BootstrapPhaseError("admin SSH key secret is empty")
+    else:
+        if "\r" in secret_value:
+            raise BootstrapPhaseError(
+                "admin SSH key secret must use LF line endings"
+            )
+        key_bytes = secret_value.encode("utf-8")
+
+    if b"\r" in key_bytes:
+        raise BootstrapPhaseError("admin SSH key secret must use LF line endings")
+    return key_bytes
+
+
 @contextmanager
 def private_key_file(
     private_key: str, directory: Path | None = None
 ) -> Iterator[Path]:
-    if not isinstance(private_key, str) or not private_key:
-        raise BootstrapPhaseError("admin SSH key secret is missing")
-    if "\r" in private_key:
-        raise BootstrapPhaseError("admin SSH key secret must use LF line endings")
+    key_bytes = private_key_bytes(private_key)
 
     temporary_directory = directory or Path(tempfile.gettempdir())
     if not temporary_directory.is_dir():
         raise BootstrapPhaseError("runner temporary directory is unavailable")
 
     handle = tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        newline="\n",
+        mode="wb",
         prefix="cdo-admin-key-",
         dir=temporary_directory,
         delete=False,
@@ -83,7 +107,7 @@ def private_key_file(
     try:
         os.chmod(path, 0o600)
         with handle:
-            handle.write(private_key)
+            handle.write(key_bytes)
             handle.flush()
             os.fsync(handle.fileno())
         yield path

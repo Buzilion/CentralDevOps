@@ -1,3 +1,4 @@
+import base64
 import sys
 import tempfile
 import unittest
@@ -25,7 +26,8 @@ class Fail2banProofTests(unittest.TestCase):
             "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
             "BOOTSTRAP_ACTOR_ID": "12345",
             "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
-            "ANSIBLE_SSH_PRIVATE_KEY": "synthetic-admin-private-key",
+            "ANSIBLE_SSH_PRIVATE_KEY": "base64:"
+            + base64.b64encode(b"synthetic-admin-private-key").decode("ascii"),
             "VPS_INITIAL_ACCESS_PASSWORD": "synthetic-initial-password",
             "BOOTSTRAP_DEPLOY_TEST_PUBLIC_KEY": "must-not-be-inherited",
             "BOOTSTRAP_DEPLOY_TEST_PRIVATE_KEY_FILE": "must-not-be-inherited",
