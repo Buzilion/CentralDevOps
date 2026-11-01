@@ -72,10 +72,7 @@ class BootstrapPhaseTests(unittest.TestCase):
             self.assertFalse(key_path.exists())
 
     def test_base64_admin_key_is_written_as_exact_bytes(self) -> None:
-        private_key = (
-            b"-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n"
-            b"-----END OPENSSH PRIVATE KEY-----\n"
-        )
+        private_key = b"synthetic admin key bytes\n"
         secret = "base64:" + base64.b64encode(private_key).decode("ascii")
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
 
