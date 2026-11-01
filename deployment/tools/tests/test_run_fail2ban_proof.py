@@ -61,11 +61,25 @@ class Fail2banProofTests(unittest.TestCase):
         FAIL2BAN_PROOF.observe_access_paths(
             lambda: events.append("admin"),
             lambda: events.append("deploy"),
-            window_seconds=120,
-            interval_seconds=60,
             monotonic=clock,
             sleep=sleep,
         )
+
+        self.assertEqual(events, ["admin", "deploy"] * 3)
+        self.assertEqual(now[0], 120)
+
+    def test_observation_fails_if_clock_and_sleep_do_not_advance(self) -> None:
+        events = []
+
+        with self.assertRaisesRegex(BootstrapPhaseError, "probe limit"):
+            FAIL2BAN_PROOF.observe_access_paths(
+                lambda: events.append("admin"),
+                lambda: events.append("deploy"),
+                window_seconds=120,
+                interval_seconds=60,
+                monotonic=lambda: 0.0,
+                sleep=lambda _seconds: None,
+            )
 
         self.assertEqual(events, ["admin", "deploy"] * 3)
 
