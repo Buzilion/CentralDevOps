@@ -1,7 +1,7 @@
 ---
 bootstrap_admin_user: cdo-admin
 bootstrap_deploy_user: cdo-deploy
-bootstrap_admin_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHQLmWLK9nIM4KwXXJDwulsj+DPyv3e6YvDBrg+tRl2t buzilion-vps-prod"
+bootstrap_admin_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIfJJDW2fEIUXiQPLXmHQnAB2g+y9rjFIKtcQ8IcoEc6"
 bootstrap_capacity_reference:
   physical_memory_mib: 3723 # Observed by Ansible on 2026-11-01 during disposable bootstrap
   platform_reserve_mib: 1536 # Provisional Production reserve; review after baseline
