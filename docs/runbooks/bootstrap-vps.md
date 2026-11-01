@@ -47,7 +47,19 @@ ansible-inventory --inventory inventories/production/hosts.yml --list
 ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/bootstrap.yml
 ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/prove-admin-key.yml
 ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/harden-ssh.yml
-ansible-lint playbooks/bootstrap.yml playbooks/prove-admin-key.yml playbooks/harden-ssh.yml roles/
+ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/manage-deploy-test-key.yml
+ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/prove-deploy-key.yml
+ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/enable-fail2ban-test.yml
+ansible-playbook --inventory inventories/staging/hosts.yml --syntax-check playbooks/disable-fail2ban-test.yml
+ansible-lint \
+  playbooks/bootstrap.yml \
+  playbooks/prove-admin-key.yml \
+  playbooks/harden-ssh.yml \
+  playbooks/manage-deploy-test-key.yml \
+  playbooks/prove-deploy-key.yml \
+  playbooks/enable-fail2ban-test.yml \
+  playbooks/disable-fail2ban-test.yml \
+  roles/
 ```
 
 The first install is controller-only. Do not set provider credentials or connect to a VPS while validating syntax or inventories.
@@ -80,6 +92,7 @@ The phases run in separate Ansible processes with SSH multiplexing disabled:
 3. **Credential cleanup:** only after that proof succeeds, the workflow displays an operator notice to remove `VPS_INITIAL_ACCESS_PASSWORD` from the selected Environment. If the proof fails, the workflow stops before this notice and before hardening.
 4. **SSH hardening:** the hardening playbook performs its own fresh admin-key identity check before running the hardening role. The role writes the SSH drop-in, validates the complete effective sshd configuration and required effective settings, and reloads SSH only after validation. If validation fails, it restores the prior drop-in and fails without reporting a successful reload.
 5. **Post-hardening proof:** a new Ansible/SSH process confirms `cdo-admin` key access again. If it fails, do not report the host ready; use the Sumopod console recovery procedure and investigate before retrying.
+6. **Disposable-only fail2ban proof:** for an explicitly flagged disposable alias, the workflow generates a temporary Ed25519 key for `cdo-deploy`, installs it without recording the private key, and proves fresh admin and deploy sessions before enabling fail2ban. It then verifies the SSH jail is active and probes both access paths every minute for the 10-minute policy window. The temporary deploy key is removed at the end. If a probe fails, the workflow attempts to disable/remove fail2ban and remove the test key; if cleanup cannot connect, use the Sumopod console to confirm fail2ban is stopped and the key is removed. Successful testing leaves fail2ban active only on the disposable host; the default remains disabled for all normal bootstrap runs.
 
 `run_bootstrap_phase.py` writes the admin private key only to a runner temporary file with owner-only permissions and removes it in an unconditional cleanup path. It removes the secret value from the child process environment and gives Ansible only the temporary file path. Do not enable shell tracing or upload runner files.
 
@@ -87,7 +100,7 @@ The base UFW policy allows the configured SSH port, TCP 80/443, and outbound tra
 
 ## Disposable VPS proof and cleanup
 
-No disposable VPS proof has been run. The user has made the empty `buz-prod-1` VPS available for the test and reports that required configuration is complete. The Production inventory candidate is present, but its capacity values remain marked as examples, the provider-console fingerprint comparison is not recorded here, and Environment variable/secret metadata is inaccessible to this CLI identity. No workflow dispatch or SSH connection has been attempted.
+No disposable VPS proof has been run. The user has made the empty `buz-prod-1` VPS available for the test and reports that required configuration is complete. The Production inventory candidate records the user-reported 3723 MiB physical RAM and provisional reserve/budget; none has been confirmed by a live baseline measurement. The user reported that the provider-console fingerprint matches the pin, but Environment variable/secret metadata is inaccessible to this CLI identity. No workflow dispatch or SSH connection has been attempted.
 
 Use a separate temporary admin key for the proof, and record only sanitized evidence. For the user-authorized `buz-prod-1` candidate, the Production workflow must run from `release/*` and pass the required reviewer gate:
 
@@ -97,7 +110,7 @@ Use a separate temporary admin key for the proof, and record only sanitized evid
 4. Try an unknown target, an alias from the other Environment, an invalid alias pattern, and a mismatched host key. Each must fail before an unintended SSH connection or key acceptance.
 5. Record whether a stable runner-compatible SSH source CIDR exists; otherwise record the host-specific exception and remediation trigger.
 6. Measure physical RAM and platform service memory use. Confirm or lower the reserve and budget and record the evidence for spec 06.
-7. Temporarily add a disposable-only deploy public key to `cdo-deploy`, verify fresh key sessions for both accounts, then enable fail2ban and observe both access paths through the test window. Remove the deploy test key. If either account is blocked or the test is inconclusive, leave fail2ban disabled.
+7. Let the disposable-only workflow phase generate and install a temporary deploy key, verify fresh admin and deploy sessions, enable fail2ban, and probe both paths every minute for the 10-minute policy window. The workflow removes the test key and attempts fail2ban rollback if a probe fails. Confirm the final service and key state from the run output; if rollback or key removal cannot connect, use the Sumopod console and keep the spec blocked.
 8. After successful independent admin-key verification, remove the temporary password secret. Remove the disposable admin-key secret, test public key, alias, host facts, and host pin. Because the user intends to use this VPS for Production later, reimage or restore it to a clean Ubuntu Server 24.04 state before service use, then add it under a normal Production service alias with a fresh Production admin key. Do not reuse the disposable password or key. Record the tested commit and evidence, then set `DISPOSABLE_VPS_PROOF_COMMIT` to that full 40-character commit SHA in a reviewed change; until that change is reviewed, service-host bootstrap remains blocked.
 
 ## GitHub Environment audit
@@ -118,7 +131,7 @@ Record one row after each real disposable-host run. Never record passwords, priv
 
 ## Acceptance audit
 
-Local audit updated on 2026-11-01. All 36 Python unit tests passed with one Ansible CLI integration test skipped on Windows; the fixtures used `CENTRALDEVOPS_TEST_TMPDIR` under the local `TestRepo-Application` clone, which remained clean. The workflow naming checker, actionlint 1.7.12, zizmor 1.31.1, YAML parsing (17 files), and `git diff --check` passed. Ansible syntax-check and ansible-lint could not run because this Windows controller has no Linux distribution. The local Production candidate passed the Python inventory, capacity, and pin-syntax checks; the user reported that the pinned host-key fingerprint matches the independent Sumopod console fingerprint. Host RAM is user-reported at 3723 MiB, while reserve and budget remain provisional pending live baseline validation. The spec-02 checklist is complete and the actor ID is pinned. No VPS, Environment secret value, or provider credential was accessed. No live dispatch or SSH connection was attempted; this feature branch is not a published `release/*` ref.
+Local audit updated on 2026-11-01. All 46 Python unit tests passed with one Ansible CLI integration test skipped on Windows; the fixtures used `CENTRALDEVOPS_TEST_TMPDIR` under the local `TestRepo-Application` clone, which remained clean. The workflow naming checker, actionlint 1.7.12, zizmor 1.31.1, YAML parsing (21 files), and `git diff --check` passed. Ansible syntax-check and ansible-lint could not run because this Windows controller has no Linux distribution. The local Production candidate passed the Python inventory, capacity, and pin-syntax checks; the user reported that the pinned host-key fingerprint matches the independent Sumopod console fingerprint. Host RAM is user-reported at 3723 MiB, while reserve and budget remain provisional pending live baseline validation. The spec-02 checklist is complete and the actor ID is pinned. No VPS, Environment secret value, or provider credential was accessed. No live dispatch or SSH connection was attempted; the feature branch is published but is not an eligible Production `release/*` ref.
 
 | Requirement | Local status | Evidence or remaining gate |
 |---|---|---|
@@ -133,5 +146,5 @@ Local audit updated on 2026-11-01. All 36 Python unit tests passed with one Ansi
 | H-09 | LOCAL PASS; LIVE PARTIAL | The proved actor ID is rejected; Production approval and `release/*` were verified, and the fixed Staging reviewer gate is active. Environment variables/secrets could not be audited; no protected workflow run was dispatched. |
 | H-10 | BLOCKED | The workflow requests operator cleanup only after independent proof; no Environment password was set or removed. |
 | H-11 | LOCAL PASS; LIVE BLOCKED | Service-host targets are rejected until a disposable proof commit is recorded. The user-authorized Production candidate is flagged disposable; no host has been accessed. |
-| H-12 | BLOCKED | Fail2ban is disabled by default; enabling it safely requires the disposable-host access-path observation. |
+| H-12 | LOCAL GATE READY; LIVE BLOCKED | The initial-access play no longer invokes fail2ban. A disposable-only workflow phase proves admin/deploy access before activation, checks both paths throughout the 10-minute test window, and attempts rollback and test-key cleanup on failure. Live evidence is still required. |
 | H-13 | LOCAL PASS; LIVE BLOCKED | Inventory capacity validation checks the declared reserve and environment ceiling, and the initial playbook checks observed RAM before any roles run. Physical RAM is user-reported at 3723 MiB; reserve 1536 MiB and budget 2048 MiB remain provisional until live baseline validation. |

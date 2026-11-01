@@ -1,0 +1,55 @@
+---
+- name: Manage the temporary deploy proof key on one disposable host
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ bootstrap_admin_user }}"
+  become: true
+  vars:
+    ansible_ssh_common_args: >-
+      {{ bootstrap_ssh_hostkey_args }}
+      -o PreferredAuthentications=publickey
+      -o PasswordAuthentication=no
+      -o KbdInteractiveAuthentication=no
+    bootstrap_deploy_test_public_key: >-
+      {{ lookup('ansible.builtin.env', 'BOOTSTRAP_DEPLOY_TEST_PUBLIC_KEY') }}
+    bootstrap_deploy_test_key_state: >-
+      {{ lookup('ansible.builtin.env', 'BOOTSTRAP_DEPLOY_TEST_KEY_STATE') }}
+  pre_tasks:
+    - name: Require one explicitly flagged disposable host and a temporary key
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - bootstrap_disposable is boolean
+          - bootstrap_disposable
+          - >-
+            lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
+            length > 0
+          - bootstrap_deploy_test_public_key | length > 0
+          - bootstrap_deploy_test_key_state in ["present", "absent"]
+        fail_msg: >-
+          Temporary deploy-key management requires one disposable host,
+          the admin key, and a valid key state.
+      no_log: true
+
+    - name: Confirm the fresh connection is cdo-admin
+      ansible.builtin.command:
+        argv:
+          - id
+          - -un
+      become: false
+      register: admin_identity
+      changed_when: false
+      failed_when: >-
+        admin_identity.rc != 0 or
+        admin_identity.stdout | trim != bootstrap_admin_user
+      no_log: true
+
+  tasks:
+    - name: Add or remove the temporary cdo-deploy proof key
+      ansible.posix.authorized_key:
+        user: "{{ bootstrap_deploy_user }}"
+        key: "{{ bootstrap_deploy_test_public_key }}"
+        state: "{{ bootstrap_deploy_test_key_state }}"
+        manage_dir: true
+      no_log: true

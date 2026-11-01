@@ -171,6 +171,33 @@ class BootstrapInventoryTests(unittest.TestCase):
     def test_known_staging_host_with_pin_and_valid_capacity_passes(self) -> None:
         self.validate()
 
+    def test_flagged_disposable_target_passes_disposable_only_validation(
+        self,
+    ) -> None:
+        validated = BOOTSTRAP_INVENTORY.validate_inventory_target(
+            "Staging",
+            "stg-disposable-01",
+            self.hostvars,
+            self.root / "inventories" / "staging" / "known_hosts",
+            require_disposable=True,
+        )
+
+        self.assertEqual(validated, self.hostvars["stg-disposable-01"])
+
+    def test_disposable_output_requires_the_exact_purpose_and_flag(self) -> None:
+        host = self.hostvars["stg-disposable-01"]
+        self.assertTrue(
+            BOOTSTRAP_INVENTORY.is_disposable_target("stg-disposable-01", host)
+        )
+        self.assertFalse(
+            BOOTSTRAP_INVENTORY.is_disposable_target("stg-test-disposable-01", host)
+        )
+        self.assertFalse(
+            BOOTSTRAP_INVENTORY.is_disposable_target(
+                "stg-disposable-01", {**host, "bootstrap_disposable": False}
+            )
+        )
+
     def test_rejects_unknown_cross_environment_and_pattern_targets(self) -> None:
         invalid_targets = (
             "stg-disposable-02",
@@ -263,6 +290,46 @@ class BootstrapInventoryTests(unittest.TestCase):
                 "prd-aio-01",
                 hostvars,
                 self.root / "inventories" / "staging" / "known_hosts",
+            )
+
+    def test_disposable_only_operation_rejects_service_alias_after_proof(self) -> None:
+        service_host = {
+            **self.hostvars["stg-disposable-01"],
+            "bootstrap_disposable": False,
+        }
+        with self.assertRaisesRegex(
+            BOOTSTRAP_INVENTORY.BootstrapValidationError,
+            "explicitly flagged disposable host",
+        ):
+            BOOTSTRAP_INVENTORY.validate_inventory_target(
+                "Staging",
+                "stg-aio-01",
+                {"stg-aio-01": service_host},
+                self.root / "inventories" / "staging" / "known_hosts",
+                disposable_proof_commit="a" * 40,
+                require_disposable=True,
+            )
+
+    def test_disposable_only_operation_requires_disposable_flag_after_proof(
+        self,
+    ) -> None:
+        hostvars = {
+            "stg-disposable-01": {
+                **self.hostvars["stg-disposable-01"],
+                "bootstrap_disposable": False,
+            }
+        }
+        with self.assertRaisesRegex(
+            BOOTSTRAP_INVENTORY.BootstrapValidationError,
+            "explicitly flagged disposable host",
+        ):
+            BOOTSTRAP_INVENTORY.validate_inventory_target(
+                "Staging",
+                "stg-disposable-01",
+                hostvars,
+                self.root / "inventories" / "staging" / "known_hosts",
+                disposable_proof_commit="a" * 40,
+                require_disposable=True,
             )
 
     def test_invalid_disposable_proof_reference_fails_closed(self) -> None:
@@ -413,6 +480,31 @@ class BootstrapDispatchTests(unittest.TestCase):
         ):
             BOOTSTRAP_INVENTORY.validate_inventory_path(
                 "Staging", "inventories/production/hosts.yml", required=True
+            )
+
+    def test_target_preflight_writes_only_the_validated_disposable_boolean(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output_path = Path(directory) / "github-output"
+            environment = {
+                "BOOTSTRAP_ENVIRONMENT": "Staging",
+                "BOOTSTRAP_TARGET_HOST": "stg-disposable-01",
+                "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+                "GITHUB_OUTPUT": str(output_path),
+            }
+            host = {"bootstrap_disposable": True}
+
+            with mock.patch.dict(os.environ, environment, clear=True):
+                with mock.patch.object(
+                    BOOTSTRAP_INVENTORY,
+                    "validate_target",
+                    return_value=host,
+                ):
+                    result = BOOTSTRAP_INVENTORY.main(["--stage", "target"])
+
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                output_path.read_text(encoding="utf-8"),
+                "target_disposable=true\n",
             )
 
 

@@ -1,0 +1,40 @@
+---
+- name: Prove fresh cdo-deploy public-key access
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ bootstrap_deploy_user }}"
+  become: false
+  vars:
+    ansible_ssh_common_args: >-
+      {{ bootstrap_ssh_hostkey_args }}
+      -o PreferredAuthentications=publickey
+      -o PasswordAuthentication=no
+      -o KbdInteractiveAuthentication=no
+  pre_tasks:
+    - name: Require one explicitly flagged disposable host and the temporary key
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - bootstrap_disposable is boolean
+          - bootstrap_disposable
+          - >-
+            lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
+            length > 0
+        fail_msg: >-
+          Deploy-key proof requires one disposable host and its temporary
+          private-key file.
+      no_log: true
+
+  tasks:
+    - name: Confirm the authenticated remote identity is cdo-deploy
+      ansible.builtin.command:
+        argv:
+          - id
+          - -un
+      register: deploy_identity
+      changed_when: false
+      failed_when: >-
+        deploy_identity.rc != 0 or
+        deploy_identity.stdout | trim != bootstrap_deploy_user
+      no_log: true
