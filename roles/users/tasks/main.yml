@@ -34,14 +34,14 @@
 - name: Read the cdo-admin authorized-key file after installation
   ansible.builtin.slurp:
     src: "/home/{{ bootstrap_admin_user }}/.ssh/authorized_keys"
-  register: bootstrap_users_admin_authorized_keys
+  register: users_admin_authorized_keys
 
 - name: Verify the reviewed admin public key was installed
   ansible.builtin.assert:
     that:
       - >-
         bootstrap_admin_public_key in
-        (bootstrap_users_admin_authorized_keys.content | b64decode).splitlines()
+        (users_admin_authorized_keys.content | b64decode).splitlines()
     fail_msg: >-
       The reviewed admin public key was not found in
       /home/{{ bootstrap_admin_user }}/.ssh/authorized_keys.
