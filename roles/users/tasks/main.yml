@@ -2,6 +2,7 @@
 - name: Create the privileged infrastructure automation account
   ansible.builtin.user:
     name: "{{ bootstrap_admin_user }}"
+    home: "/home/{{ bootstrap_admin_user }}"
     groups:
       - sudo
     append: false
@@ -25,10 +26,25 @@
 - name: Install the reviewed admin public key
   ansible.posix.authorized_key:
     user: "{{ bootstrap_admin_user }}"
+    path: "/home/{{ bootstrap_admin_user }}/.ssh/authorized_keys"
     key: "{{ bootstrap_admin_public_key }}"
     state: present
     manage_dir: true
-  no_log: true
+
+- name: Read the cdo-admin authorized-key file after installation
+  ansible.builtin.slurp:
+    src: "/home/{{ bootstrap_admin_user }}/.ssh/authorized_keys"
+  register: bootstrap_users_admin_authorized_keys
+
+- name: Verify the reviewed admin public key was installed
+  ansible.builtin.assert:
+    that:
+      - >-
+        bootstrap_admin_public_key in
+        (bootstrap_users_admin_authorized_keys.content | b64decode).splitlines()
+    fail_msg: >-
+      The reviewed admin public key was not found in
+      /home/{{ bootstrap_admin_user }}/.ssh/authorized_keys.
 
 - name: Grant cdo-admin passwordless sudo for Ansible privilege escalation
   ansible.builtin.copy:
