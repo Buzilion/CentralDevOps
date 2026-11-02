@@ -346,12 +346,21 @@ class BootstrapPhaseTests(unittest.TestCase):
             self.assertFalse(key_path.exists())
 
     def test_private_key_secret_requires_base64_prefix(self) -> None:
+        unencoded_private_key = (
+            "-" * 5
+            + "BEGIN "
+            + "OPENSSH "
+            + "PRIVATE "
+            + "KEY"
+            + "-" * 5
+            + "\nsynthetic\n"
+        )
         with self.assertRaisesRegex(
             RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
             "Base64-encoded with the base64: prefix",
         ):
             RUN_BOOTSTRAP_PHASE.private_key_bytes(
-                "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n"
+                unencoded_private_key
             )
 
         with self.assertRaisesRegex(

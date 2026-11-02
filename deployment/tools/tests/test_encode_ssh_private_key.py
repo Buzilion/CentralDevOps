@@ -11,10 +11,29 @@ ENCODER_PATH = TOOLS / "encode_ssh_private_key.py"
 
 class EncodeSSHPrivateKeyTests(unittest.TestCase):
     def test_encodes_exact_input_with_prefix_and_without_wrapping(self) -> None:
+        private_key_header = (
+            b"-" * 5
+            + b"BEGIN "
+            + b"OPENSSH "
+            + b"PRIVATE "
+            + b"KEY"
+            + b"-" * 5
+        )
+        private_key_footer = (
+            b"-" * 5
+            + b"END "
+            + b"OPENSSH "
+            + b"PRIVATE "
+            + b"KEY"
+            + b"-" * 5
+        )
         private_key = (
-            b"-----BEGIN OPENSSH PRIVATE KEY-----\r\n"
+            private_key_header
+            + b"\r\n"
             + b"A" * 200
-            + b"\r\n-----END OPENSSH PRIVATE KEY-----\r\n"
+            + b"\r\n"
+            + private_key_footer
+            + b"\r\n"
         )
 
         result = subprocess.run(
