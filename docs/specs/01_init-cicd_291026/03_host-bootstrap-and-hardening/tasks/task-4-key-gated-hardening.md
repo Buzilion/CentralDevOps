@@ -22,8 +22,8 @@ Make the independent admin-key connection an explicit, mandatory gate before dis
 1. Implement a separate admin-key proof phase that establishes a fresh SSH connection to the same exact host, with strict host-key checking and the `cdo-admin` account.
 2. Require an authenticated remote command that confirms the connection is the intended admin user, not merely a successful local key parse.
 3. Gate every hardening task on successful completion of that proof. A failed proof must fail the play and skip all hardening changes.
-4. Configure key-only SSH: enable public key authentication; disable root, password, and keyboard-interactive login. Validate the candidate sshd configuration before applying it and reload only after validation.
-5. After hardening, open a fresh SSH connection with the admin key and verify the host refuses root/password login.
+4. After the admin key works on port 22, configure key-only SSH with both `Port 22` and `Port 4671`; disable root, password, and keyboard-interactive login. Validate the complete candidate sshd configuration and both effective ports before reloading.
+5. Open a fresh admin-key connection on port 4671. Only after it succeeds, use a separate 4671 session to finalize sshd to port 4671 only and remove the UFW 22 rule; validate/reload and prove another fresh 4671 connection.
 6. Keep the Sumopod console recovery procedure explicit in the runbook. Do not introduce an untested automatic rollback that could conceal a failed access transition.
 
 ## Acceptance criteria
@@ -31,6 +31,9 @@ Make the independent admin-key connection an explicit, mandatory gate before dis
 - Admin-key proof uses a new process/SSH connection, not the initial provider session.
 - A failed proof demonstrably skips all sshd hardening and leaves provider password access available.
 - Successful proof permits hardening, and a new admin-key connection succeeds afterwards.
+- Failed initial proof prevents hardening and leaves provider port 22 usable.
+- The transitional effective sshd listener set is exactly `{22, 4671}`; final sshd listens on 4671 only.
+- Port 22 is not closed until a fresh admin-key login on 4671 has succeeded; finalization itself runs over 4671.
 - Root and password/keyboard-interactive authentication are refused after successful hardening.
 - sshd config validation failure leaves the existing configuration active.
 

@@ -56,6 +56,8 @@ FORBIDDEN_INVENTORY_SECRET_RE = re.compile(
 
 # Resolved from the completed spec-02 proof run's trusted actor metadata.
 DISPATCH_APP_ACTOR_ID = 350767931
+INITIAL_BOOTSTRAP_SSH_PORT = 22
+MANAGED_SSH_PORT = 4671
 
 # Set only after the disposable-host proof is recorded in the bootstrap runbook.
 DISPOSABLE_VPS_PROOF_COMMIT: str | None = None
@@ -221,7 +223,7 @@ def _require_host_key_pin(
     *,
     ssh_keygen: str = "ssh-keygen",
     command_environment: Mapping[str, str] | None = None,
-) -> None:
+) -> frozenset[tuple[str, str]]:
     if not known_hosts_path.is_file():
         raise BootstrapValidationError("selected environment host-key file is missing")
     keygen_environment = dict(
@@ -248,6 +250,19 @@ def _require_host_key_pin(
         raise BootstrapValidationError(
             "could not inspect the selected environment host-key file"
         )
+    key_material = set()
+    for line in result.stdout.splitlines():
+        if not line or line.lstrip().startswith("#"):
+            continue
+        parts = line.split()
+        key_index = 2 if parts and parts[0].startswith("@") else 1
+        if len(parts) > key_index + 1:
+            key_material.add((parts[key_index], parts[key_index + 1]))
+    if not key_material:
+        raise BootstrapValidationError(
+            "selected target host-key pin has no readable key material"
+        )
+    return frozenset(key_material)
 
 
 def validate_inventory_target(
@@ -260,6 +275,7 @@ def validate_inventory_target(
     command_environment: Mapping[str, str] | None = None,
     disposable_proof_commit: str | None = DISPOSABLE_VPS_PROOF_COMMIT,
     require_disposable: bool = False,
+    require_initial_ssh_port: bool = True,
 ) -> Mapping[str, Any]:
     target = validate_target_alias(environment, target)
     if not isinstance(hostvars, Mapping) or not hostvars:
@@ -313,9 +329,37 @@ def validate_inventory_target(
             "target provider username is missing or invalid"
         )
 
-    port = host.get("ansible_port", 22)
-    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
-        raise BootstrapValidationError("target SSH port is invalid")
+    port = host.get("ansible_port")
+    if isinstance(port, bool) or not isinstance(port, int) or port != MANAGED_SSH_PORT:
+        raise BootstrapValidationError(
+            f"target SSH port must be {MANAGED_SSH_PORT}"
+        )
+    initial_port = host.get("bootstrap_initial_ssh_port")
+    if require_initial_ssh_port and (
+        isinstance(initial_port, bool)
+        or not isinstance(initial_port, int)
+        or initial_port != INITIAL_BOOTSTRAP_SSH_PORT
+    ):
+        raise BootstrapValidationError(
+            f"initial bootstrap SSH port must be {INITIAL_BOOTSTRAP_SSH_PORT}"
+        )
+    if initial_port is not None and (
+        isinstance(initial_port, bool)
+        or not isinstance(initial_port, int)
+        or initial_port != INITIAL_BOOTSTRAP_SSH_PORT
+    ):
+        raise BootstrapValidationError(
+            f"initial bootstrap SSH port must be {INITIAL_BOOTSTRAP_SSH_PORT}"
+        )
+    managed_port = host.get("bootstrap_managed_ssh_port")
+    if (
+        isinstance(managed_port, bool)
+        or not isinstance(managed_port, int)
+        or managed_port != MANAGED_SSH_PORT
+    ):
+        raise BootstrapValidationError(
+            f"managed SSH port must be {MANAGED_SSH_PORT}"
+        )
 
     validate_public_admin_key(host.get("bootstrap_admin_public_key"))
 
@@ -373,13 +417,22 @@ def validate_inventory_target(
                 "target needs a stable SSH source CIDR or a documented exception"
             )
 
-    endpoint = host_key_endpoint(address, port)
-    _require_host_key_pin(
-        known_hosts_path,
-        endpoint,
-        ssh_keygen=ssh_keygen,
-        command_environment=command_environment,
-    )
+    endpoint_ports = [port]
+    if require_initial_ssh_port:
+        endpoint_ports.insert(0, initial_port)
+    endpoint_pins = [
+        _require_host_key_pin(
+            known_hosts_path,
+            host_key_endpoint(address, endpoint_port),
+            ssh_keygen=ssh_keygen,
+            command_environment=command_environment,
+        )
+        for endpoint_port in endpoint_ports
+    ]
+    if len(endpoint_pins) == 2 and endpoint_pins[0] != endpoint_pins[1]:
+        raise BootstrapValidationError(
+            "initial and final SSH host-key pins do not match"
+        )
     return host
 
 
@@ -446,6 +499,7 @@ def validate_target(
     require_inventory_path: bool = False,
     command_environment: Mapping[str, str] | None = None,
     require_disposable: bool = False,
+    require_initial_ssh_port: bool = True,
 ) -> Mapping[str, Any]:
     if not isinstance(environment, str) or not isinstance(target, str):
         raise BootstrapValidationError(
@@ -469,6 +523,7 @@ def validate_target(
         root / config.known_hosts,
         command_environment=command_environment,
         require_disposable=require_disposable,
+        require_initial_ssh_port=require_initial_ssh_port,
     )
 
 

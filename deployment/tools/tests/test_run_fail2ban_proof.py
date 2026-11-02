@@ -1,4 +1,3 @@
-import base64
 import sys
 import tempfile
 import unittest
@@ -26,8 +25,10 @@ class Fail2banProofTests(unittest.TestCase):
             "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
             "BOOTSTRAP_ACTOR_ID": "12345",
             "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
-            "ANSIBLE_SSH_PRIVATE_KEY": "base64:"
-            + base64.b64encode(b"synthetic-admin-private-key").decode("ascii"),
+            "ANSIBLE_SSH_PRIVATE_KEY": (
+                "synthetic-admin-key-line-one\n"
+                "synthetic-admin-key-line-two\n"
+            ),
             "VPS_INITIAL_ACCESS_PASSWORD": "synthetic-initial-password",
             "BOOTSTRAP_DEPLOY_TEST_PUBLIC_KEY": "must-not-be-inherited",
             "BOOTSTRAP_DEPLOY_TEST_PRIVATE_KEY_FILE": "must-not-be-inherited",
@@ -43,6 +44,9 @@ class Fail2banProofTests(unittest.TestCase):
         self.assertEqual(inventory_path.as_posix(), "inventories/staging/hosts.yml")
         self.assertEqual(target, "stg-disposable-01")
         self.assertTrue(validate_target.call_args.kwargs["require_disposable"])
+        self.assertFalse(
+            validate_target.call_args.kwargs["require_initial_ssh_port"]
+        )
         command_environment = validate_target.call_args.kwargs["command_environment"]
         self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", command_environment)
         self.assertNotIn("VPS_INITIAL_ACCESS_PASSWORD", command_environment)
@@ -156,7 +160,10 @@ class Fail2banProofTests(unittest.TestCase):
             ],
         )
         for command, kwargs in calls:
-            self.assertNotIn("synthetic-admin-private-key", command)
+            self.assertNotIn("synthetic-admin-key-line-one", command)
+            self.assertNotIn(
+                "synthetic-admin-key-line-one", kwargs["env"].values()
+            )
             self.assertNotIn("synthetic-initial-password", command)
             self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", kwargs["env"])
             self.assertNotIn("VPS_INITIAL_ACCESS_PASSWORD", kwargs["env"])

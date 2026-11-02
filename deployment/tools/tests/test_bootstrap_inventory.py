@@ -71,7 +71,8 @@ class BootstrapInventoryTests(unittest.TestCase):
         ).strip()
         host_key_parts = host_public_key.split()
         (staging / "known_hosts").write_text(
-            f"fixture.invalid {host_key_parts[0]} {host_key_parts[1]}\n",
+            f"fixture.invalid {host_key_parts[0]} {host_key_parts[1]}\n"
+            f"[fixture.invalid]:4671 {host_key_parts[0]} {host_key_parts[1]}\n",
             encoding="utf-8",
         )
         (staging / "hosts.yml").write_text(
@@ -91,6 +92,7 @@ class BootstrapInventoryTests(unittest.TestCase):
             "bootstrap_admin_public_key: "
             + json.dumps(admin_public_key)
             + "\n"
+            "bootstrap_managed_ssh_port: 4671\n"
             "bootstrap_capacity_reference:\n"
             "  physical_memory_mib: 2048\n"
             "  platform_reserve_mib: 1024\n"
@@ -99,6 +101,8 @@ class BootstrapInventoryTests(unittest.TestCase):
         )
         (staging / "host_vars" / "stg-disposable-01.yml").write_text(
             "ansible_host: fixture.invalid\n"
+            "ansible_port: 4671\n"
+            "bootstrap_initial_ssh_port: 22\n"
             "provider_username: fixture-user\n"
             "physical_memory_mib: 2048\n"
             "platform_reserve_mib: 1024\n"
@@ -170,6 +174,120 @@ class BootstrapInventoryTests(unittest.TestCase):
 
     def test_known_staging_host_with_pin_and_valid_capacity_passes(self) -> None:
         self.validate()
+
+    def test_requires_ssh_port_4671(self) -> None:
+        for port in (None, 22, 4672, True):
+            with self.subTest(port=port):
+                host = dict(self.hostvars["stg-disposable-01"])
+                if port is None:
+                    host.pop("ansible_port")
+                else:
+                    host["ansible_port"] = port
+                with self.assertRaisesRegex(
+                    BOOTSTRAP_INVENTORY.BootstrapValidationError,
+                    "target SSH port must be 4671",
+                ):
+                    self.validate(hostvars={"stg-disposable-01": host})
+
+    def test_requires_final_port_4671_host_key_pin(self) -> None:
+        known_hosts = self.root / "inventories" / "staging" / "known_hosts"
+        host_key = self.host_private_key.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        ).split()
+        known_hosts.write_text(
+            f"fixture.invalid {host_key[0]} {host_key[1]}\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            BOOTSTRAP_INVENTORY.BootstrapValidationError,
+            "no committed host-key pin",
+        ):
+            self.validate()
+
+    def test_requires_initial_port_22_host_key_pin(self) -> None:
+        known_hosts = self.root / "inventories" / "staging" / "known_hosts"
+        host_key = self.host_private_key.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        ).split()
+        known_hosts.write_text(
+            f"[fixture.invalid]:4671 {host_key[0]} {host_key[1]}\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(
+            BOOTSTRAP_INVENTORY.BootstrapValidationError,
+            "no committed host-key pin",
+        ):
+            self.validate()
+
+    def test_requires_matching_initial_and_final_host_key_pins(self) -> None:
+        known_hosts = self.root / "inventories" / "staging" / "known_hosts"
+        host_key = self.host_private_key.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        ).split()
+        other_key = self.admin_private_key.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        ).split()
+        known_hosts.write_text(
+            f"fixture.invalid {host_key[0]} {host_key[1]}\n"
+            f"[fixture.invalid]:4671 {other_key[0]} {other_key[1]}\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(
+            BOOTSTRAP_INVENTORY.BootstrapValidationError,
+            "initial and final SSH host-key pins do not match",
+        ):
+            self.validate()
+
+    def test_requires_initial_bootstrap_port_22(self) -> None:
+        for port in (None, 4671, 23, True):
+            with self.subTest(port=port):
+                host = dict(self.hostvars["stg-disposable-01"])
+                if port is None:
+                    host.pop("bootstrap_initial_ssh_port")
+                else:
+                    host["bootstrap_initial_ssh_port"] = port
+                with self.assertRaisesRegex(
+                    BOOTSTRAP_INVENTORY.BootstrapValidationError,
+                    "initial bootstrap SSH port must be 22",
+                ):
+                    self.validate(hostvars={"stg-disposable-01": host})
+
+    def test_managed_host_can_validate_only_the_final_ssh_pin(self) -> None:
+        host = dict(self.hostvars["stg-disposable-01"])
+        host.pop("bootstrap_initial_ssh_port")
+        known_hosts = self.root / "inventories" / "staging" / "known_hosts"
+        host_key = self.host_private_key.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        ).split()
+        known_hosts.write_text(
+            f"[fixture.invalid]:4671 {host_key[0]} {host_key[1]}\n",
+            encoding="utf-8",
+        )
+
+        validated = BOOTSTRAP_INVENTORY.validate_inventory_target(
+            "Staging",
+            "stg-disposable-01",
+            {"stg-disposable-01": host},
+            known_hosts,
+            require_initial_ssh_port=False,
+        )
+
+        self.assertEqual(validated, host)
+
+    def test_requires_managed_ssh_port_contract(self) -> None:
+        for name, value in (
+            ("ansible_port", 22),
+            ("bootstrap_managed_ssh_port", 22),
+        ):
+            with self.subTest(name=name, value=value):
+                host = dict(self.hostvars["stg-disposable-01"])
+                host[name] = value
+                with self.assertRaisesRegex(
+                    BOOTSTRAP_INVENTORY.BootstrapValidationError,
+                    "SSH port must be 4671",
+                ):
+                    self.validate(hostvars={"stg-disposable-01": host})
 
     def test_flagged_disposable_target_passes_disposable_only_validation(
         self,

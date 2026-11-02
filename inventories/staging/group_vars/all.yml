@@ -2,6 +2,7 @@
 bootstrap_admin_user: cdo-admin
 bootstrap_deploy_user: cdo-deploy
 bootstrap_admin_public_key: ""
+bootstrap_managed_ssh_port: 4671
 bootstrap_capacity_reference:
   physical_memory_mib: 2048
   platform_reserve_mib: 1024

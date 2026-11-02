@@ -1,0 +1,42 @@
+---
+- name: Enable Fail2ban on one managed host after disposable proof
+  hosts: all
+  gather_facts: false
+  remote_user: "{{ bootstrap_admin_user }}"
+  become: true
+  vars:
+    fail2ban_enabled: true
+    ansible_ssh_common_args: >-
+      {{ bootstrap_ssh_hostkey_args }}
+      -o PreferredAuthentications=publickey
+      -o PasswordAuthentication=no
+      -o KbdInteractiveAuthentication=no
+  pre_tasks:
+    - name: Require one exact non-disposable host and the admin key
+      ansible.builtin.assert:
+        that:
+          - ansible_limit is defined
+          - ansible_limit == inventory_hostname
+          - bootstrap_disposable is not defined or not bootstrap_disposable
+          - >-
+            lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
+            length > 0
+        fail_msg: >-
+          Managed-host Fail2ban activation requires one non-disposable host
+          and the admin key.
+      no_log: true
+
+    - name: Confirm the fresh connection is cdo-admin
+      ansible.builtin.command:
+        argv:
+          - id
+          - -un
+      become: false
+      register: admin_identity
+      changed_when: false
+      failed_when: >-
+        admin_identity.rc != 0 or
+        admin_identity.stdout | trim != bootstrap_admin_user
+
+  roles:
+    - fail2ban

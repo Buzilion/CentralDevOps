@@ -5,24 +5,130 @@
       - fail2ban_enabled is boolean
     fail_msg: fail2ban_enabled must be an explicit boolean.
 
-- name: Install fail2ban only after the disposable-host access-path test
+- name: Require the managed SSH port before enabling Fail2ban
+  ansible.builtin.assert:
+    that:
+      - bootstrap_managed_ssh_port is defined
+      - bootstrap_managed_ssh_port == 4671
+    fail_msg: Fail2ban requires the reviewed SSH port 4671.
+  when: fail2ban_enabled
+
+- name: Install Fail2ban only after the disposable-host proof
   ansible.builtin.apt:
     name: fail2ban
     state: present
   when: fail2ban_enabled
 
-- name: Configure the SSH jail only after the disposable-host access-path test
+- name: Configure the SSH jail only after the disposable-host proof
   ansible.builtin.template:
     src: jail.local.j2
     dest: /etc/fail2ban/jail.d/centraldevops-sshd.local
     owner: root
     group: root
     mode: "0644"
+  notify: Restart Fail2ban
   when: fail2ban_enabled
 
-- name: Enable fail2ban only after the disposable-host access-path test
+- name: Validate the Fail2ban configuration before enabling the jail
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - -t
+  changed_when: false
+  when: fail2ban_enabled
+
+- name: Enable Fail2ban only after the disposable-host proof
   ansible.builtin.service:
     name: fail2ban
     enabled: true
     state: started
+  when: fail2ban_enabled
+
+- name: Apply the new jail configuration before verifying it
+  ansible.builtin.meta: flush_handlers
+  when: fail2ban_enabled
+
+- name: Confirm the Fail2ban service is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - fail2ban
+  register: fail2ban_service
+  changed_when: false
+  failed_when: >-
+    fail2ban_service.rc != 0 or
+    fail2ban_service.stdout | trim != "active"
+  no_log: true
+  when: fail2ban_enabled
+
+- name: Confirm the SSH jail is loaded
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - status
+      - sshd
+  register: fail2ban_sshd_jail
+  changed_when: false
+  failed_when: fail2ban_sshd_jail.rc != 0
+  no_log: true
+  when: fail2ban_enabled
+
+- name: Read the managed SSH jail configuration
+  ansible.builtin.slurp:
+    src: /etc/fail2ban/jail.d/centraldevops-sshd.local
+  register: fail2ban_sshd_config
+  no_log: true
+  when: fail2ban_enabled
+
+- name: Require the SSH jail to target port 4671
+  ansible.builtin.assert:
+    that:
+      - "'port = 4671' in (fail2ban_sshd_config.content | b64decode)"
+    fail_msg: The Fail2ban SSH jail must target port 4671.
+  when: fail2ban_enabled
+
+- name: Read the effective SSH jail ban duration
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - get
+      - sshd
+      - bantime
+  register: fail2ban_sshd_bantime
+  changed_when: false
+  failed_when: >-
+    fail2ban_sshd_bantime.rc != 0 or
+    fail2ban_sshd_bantime.stdout | trim | int != 86400
+  no_log: true
+  when: fail2ban_enabled
+
+- name: Read the effective SSH jail failure window
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - get
+      - sshd
+      - findtime
+  register: fail2ban_sshd_findtime
+  changed_when: false
+  failed_when: >-
+    fail2ban_sshd_findtime.rc != 0 or
+    fail2ban_sshd_findtime.stdout | trim | int != 3600
+  no_log: true
+  when: fail2ban_enabled
+
+- name: Read the effective SSH jail retry threshold
+  ansible.builtin.command:
+    argv:
+      - fail2ban-client
+      - get
+      - sshd
+      - maxretry
+  register: fail2ban_sshd_maxretry
+  changed_when: false
+  failed_when: >-
+    fail2ban_sshd_maxretry.rc != 0 or
+    fail2ban_sshd_maxretry.stdout | trim | int != 2
+  no_log: true
   when: fail2ban_enabled

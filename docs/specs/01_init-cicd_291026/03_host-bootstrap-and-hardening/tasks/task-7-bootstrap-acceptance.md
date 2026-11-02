@@ -19,7 +19,7 @@ Audit every requirement in spec 03, retain evidence, and establish the safe hand
 
 1. Run syntax, lint, inventory, workflow, catalog, and negative tests from Tasks 1–5.
 2. Audit the disposable VPS proof and all evidence required by Task 6.
-3. Confirm no secrets or fake host data are committed and no credential appears in workflow logs or artifacts.
+3. Confirm no secrets or fake host data are committed and no credential appears in workflow logs or artifacts. Confirm the admin private-key secret is documented as raw file contents and does not require user-side Base64 encoding.
 4. Confirm the initial password was removed from the tested Environment after key access was verified.
 5. Confirm the dispatch App identity check and Production approval gate are active.
 6. Record PASS/FAIL against H-01 through H-13 in the runbook. Fix in-scope defects or leave the task and spec blocked; do not mark a failed requirement complete.
@@ -27,9 +27,10 @@ Audit every requirement in spec 03, retain evidence, and establish the safe hand
 
 ## Acceptance criteria
 
-- Every requirement H-01 through H-13 has dated evidence or a clear blocked status.
+- Every requirement H-01 through H-13 has dated evidence or a clear blocked status, including reset-host pin re-verification.
 - Disposable-host hardening proof is recorded and no Staging/Production hardening occurred before it.
 - Workflow and inventory isolation, strict host-key checking, secret lifecycle, and least privilege are verified.
+- Fresh/reset hosts bootstrap on 22, transition through a proven dual-listener state, and finish with sshd/UFW/provider firewall on 4671 only; already-managed hosts remain on 4671. The SSH Fail2ban policy is one day after two failures within one hour, and service-host activation remains gated by recorded disposable proof.
 - No open failure blocks spec 04 from starting; the spec-01 prerequisite remains satisfied.
 - The checklist accurately reflects completed work.
 

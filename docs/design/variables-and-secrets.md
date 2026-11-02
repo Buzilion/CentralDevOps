@@ -119,7 +119,7 @@ General handling:
 
 - Generate every key or password on a trusted workstation, store the recovery copy where stated, set the GitHub secret, then delete the local plaintext files.
 - Use a separate value for `Staging` and `Production` wherever the table in section 1.3 says so. A Staging credential must never open a Production resource.
-- If key files pass through Windows editors, make sure they keep LF line endings. CRLF makes OpenSSH reject a private key.
+- The bootstrap controller accepts raw private-key text and normalizes CRLF to LF before OpenSSH validation; bare carriage returns are rejected. Do not manually Base64-encode private-key secrets.
 - Secret values are masked in logs but are not to be echoed, written to artifacts or passed as workflow inputs (SEC-12, NFR-12).
 
 ### 4.1 `ANSIBLE_SSH_PRIVATE_KEY`
@@ -130,7 +130,7 @@ General handling:
 - **How to get it:**
   1. Generate one ed25519 key pair per Environment, with an empty passphrase because the key is used unattended: `ssh-keygen -t ed25519 -C "cdo-admin-staging" -f cdo-admin-staging` (and `cdo-admin-production`).
   2. Commit the **public** key to the Environment's inventory data (section 9) so `bootstrap-vps.yml` installs it on the admin account.
-  3. Set the secret to `base64:` followed by a single-line Base64 encoding of the complete private-key file (including the `BEGIN`/`END` lines). For example, from a trusted WSL or Linux shell, run `{ printf 'base64:'; base64 -w0 cdo-admin-production; } | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Production`. Base64 is only an encoding, not encryption; treat the value as the private key and never print or log it. The bootstrap runner also accepts raw private-key text for compatibility.
+  3. Set the secret to the complete, raw unencrypted private-key file, including its `BEGIN`/`END` lines. Do not pass the value as a command-line argument or print it. For example, from a trusted WSL or Linux shell, send the file to `gh` through standard input: `gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Production < "$HOME/.ssh/cdo-admin-production"`. The controller normalizes CRLF to LF and writes a protected temporary key file. Existing `base64:`-prefixed values remain accepted for compatibility, but new or rotated secrets must use raw file contents.
 - **Notes:** Keep an encrypted copy in the password manager only if operators need the admin identity outside GitHub (for example the database SSH tunnel, DB-07). Rotation: section 11.
 
 ### 4.2 `ANSIBLE_VAULT_PASSWORD` (only if Ansible Vault is used)

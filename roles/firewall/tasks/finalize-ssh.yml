@@ -1,0 +1,55 @@
+---
+- name: Read available UFW application profiles
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - app
+      - list
+  register: firewall_application_profiles
+  changed_when: false
+
+- name: Remove the legacy OpenSSH application-profile allowance
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+    delete: true
+  when: "'OpenSSH' in firewall_application_profiles.stdout_lines"
+  no_log: true
+
+- name: Remove the temporary unrestricted SSH allowance on port 22
+  community.general.ufw:
+    rule: allow
+    port: "{{ bootstrap_initial_ssh_port | string }}"
+    proto: tcp
+    delete: true
+  when: ssh_source_cidrs is not defined or ssh_source_cidrs | length == 0
+  no_log: true
+
+- name: Remove temporary source-restricted SSH allowances on port 22
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item }}"
+    port: "{{ bootstrap_initial_ssh_port | string }}"
+    proto: tcp
+    delete: true
+  loop: "{{ ssh_source_cidrs | default([]) }}"
+  no_log: true
+
+- name: Verify UFW no longer allows SSH on port 22
+  ansible.builtin.command:
+    argv:
+      - ufw
+      - status
+  register: firewall_finalized_ufw_status
+  changed_when: false
+  failed_when: >-
+    firewall_finalized_ufw_status.rc != 0 or
+    'Status: active' not in firewall_finalized_ufw_status.stdout or
+    (
+      firewall_finalized_ufw_status.stdout_lines
+        | select('search', '22/tcp|OpenSSH')
+      | select('search', 'ALLOW IN')
+      | list
+      | length > 0
+    )
+  no_log: true

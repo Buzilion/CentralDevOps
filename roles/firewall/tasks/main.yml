@@ -1,4 +1,13 @@
 ---
+- name: Require the managed SSH port from inventory
+  ansible.builtin.assert:
+    that:
+      - bootstrap_initial_ssh_port is defined
+      - bootstrap_initial_ssh_port == 22
+      - bootstrap_managed_ssh_port is defined
+      - bootstrap_managed_ssh_port == 4671
+    fail_msg: The firewall requires the reviewed SSH port 4671.
+
 - name: Require an explicit SSH source-policy decision
   ansible.builtin.assert:
     that:
@@ -14,18 +23,26 @@
 - name: Allow SSH from each compatible stable source CIDR
   community.general.ufw:
     rule: allow
-    from_ip: "{{ item }}"
-    port: "{{ ansible_port | default(22) | string }}"
+    from_ip: "{{ item.0 }}"
+    port: "{{ item.1 | string }}"
     proto: tcp
-  loop: "{{ ssh_source_cidrs | default([]) }}"
+  loop: >-
+    {{
+      ssh_source_cidrs | default([]) |
+      product([bootstrap_initial_ssh_port, bootstrap_managed_ssh_port]) |
+      list
+    }}
   no_log: true
 
-- name: Preserve SSH access when no stable runner-compatible source is available
+- name: Temporarily allow both SSH ports when no stable source is configured
   community.general.ufw:
     rule: allow
-    port: "{{ ansible_port | default(22) | string }}"
+    port: "{{ item | string }}"
     proto: tcp
   when: ssh_source_cidrs is not defined or ssh_source_cidrs | length == 0
+  loop:
+    - "{{ bootstrap_initial_ssh_port }}"
+    - "{{ bootstrap_managed_ssh_port }}"
   no_log: true
 
 - name: Allow public HTTP and HTTPS
