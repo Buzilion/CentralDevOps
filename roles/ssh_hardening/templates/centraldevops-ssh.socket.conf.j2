@@ -1,0 +1,7 @@
+[Socket]
+ListenStream=
+BindIPv6Only=ipv6-only
+{% for port in ssh_listen_ports %}
+ListenStream=0.0.0.0:{{ port | int }}
+ListenStream=[::]:{{ port | int }}
+{% endfor %}
