@@ -88,10 +88,13 @@ jobs:
             playbooks/bootstrap.yml \
             playbooks/prove-admin-key.yml \
             playbooks/harden-ssh.yml \
+            playbooks/finalize-ssh-port.yml \
             playbooks/manage-deploy-test-key.yml \
             playbooks/prove-deploy-key.yml \
             playbooks/enable-fail2ban-test.yml \
-            playbooks/disable-fail2ban-test.yml; do
+            playbooks/disable-fail2ban-test.yml \
+            playbooks/enable-fail2ban.yml \
+            playbooks/disable-fail2ban.yml; do
             ansible-playbook \
               --inventory inventories/staging/hosts.yml \
               --syntax-check "$playbook"
@@ -100,10 +103,13 @@ jobs:
             playbooks/bootstrap.yml \
             playbooks/prove-admin-key.yml \
             playbooks/harden-ssh.yml \
+            playbooks/finalize-ssh-port.yml \
             playbooks/manage-deploy-test-key.yml \
             playbooks/prove-deploy-key.yml \
             playbooks/enable-fail2ban-test.yml \
             playbooks/disable-fail2ban-test.yml \
+            playbooks/enable-fail2ban.yml \
+            playbooks/disable-fail2ban.yml \
             roles/common \
             roles/users \
             roles/firewall \

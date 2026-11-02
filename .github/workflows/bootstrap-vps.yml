@@ -126,7 +126,7 @@ jobs:
           set -euo pipefail
           python3 deployment/tools/run_bootstrap_phase.py
 
-      - name: Prove fresh cdo-admin key access
+      - name: Prove fresh cdo-admin key access on port 22
         env:
           BOOTSTRAP_PHASE: admin-key-proof
           ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
@@ -141,7 +141,7 @@ jobs:
           notice+='Remove VPS_INITIAL_ACCESS_PASSWORD from the selected GitHub Environment.'
           printf '%s\n' "$notice"
 
-      - name: Apply validated SSH hardening
+      - name: Apply validated dual-listener SSH hardening on port 22
         env:
           BOOTSTRAP_PHASE: ssh-hardening
           ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
@@ -149,9 +149,60 @@ jobs:
           set -euo pipefail
           python3 deployment/tools/run_bootstrap_phase.py
 
-      - name: Verify a fresh admin-key login after hardening
+      - name: Verify a fresh admin-key login on port 4671
         env:
           BOOTSTRAP_PHASE: post-hardening-proof
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Finalize SSH and UFW on port 4671 only
+        env:
+          BOOTSTRAP_PHASE: finalize-ssh-port
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Verify a fresh admin-key login after closing port 22
+        env:
+          BOOTSTRAP_PHASE: post-port-finalization-proof
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Close provider-firewall port 22
+        run: |
+          notice='::notice title=Close the old SSH port::'
+          notice+='A fresh cdo-admin login on port 4671 succeeded after finalization. '
+          notice+='Remove the provider-firewall TCP 22 rule, then verify 4671 remains reachable.'
+          printf '%s\n' "$notice"
+
+      - name: Enable Fail2ban on a managed service host after disposable proof
+        if: needs.preflight.outputs.target_disposable != 'true'
+        id: enable_fail2ban
+        env:
+          BOOTSTRAP_PHASE: fail2ban-enable
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Verify fresh admin-key access after Fail2ban activation
+        if: needs.preflight.outputs.target_disposable != 'true'
+        env:
+          BOOTSTRAP_PHASE: post-fail2ban-proof
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python3 deployment/tools/run_bootstrap_phase.py
+
+      - name: Roll back failed Fail2ban activation
+        if: failure() && needs.preflight.outputs.target_disposable != 'true' && steps.enable_fail2ban.outcome != 'skipped'
+        env:
+          BOOTSTRAP_PHASE: fail2ban-rollback
           ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail

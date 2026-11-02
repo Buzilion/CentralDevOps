@@ -1,4 +1,19 @@
 ---
+- name: Require the managed SSH port from inventory
+  ansible.builtin.assert:
+    that:
+      - bootstrap_initial_ssh_port is defined
+      - bootstrap_initial_ssh_port == 22
+      - bootstrap_managed_ssh_port is defined
+      - bootstrap_managed_ssh_port == 4671
+      - ssh_listen_ports is defined
+      - ssh_listen_ports is sequence
+      - ssh_listen_ports is not string
+      - >-
+        (ssh_listen_ports | map('int') | list == [22, 4671]) or
+        (ssh_listen_ports | map('int') | list == [4671])
+    fail_msg: SSH hardening requires the reviewed SSH port 4671.
+
 - name: Inspect the existing CentralDevOps SSH policy file
   ansible.builtin.stat:
     path: /etc/ssh/sshd_config.d/00-centraldevops-hardening.conf
@@ -60,8 +75,20 @@
           - >-
             'kbdinteractiveauthentication no' in
             ssh_hardening_effective_config.stdout_lines
+          - >-
+            ssh_hardening_effective_config.stdout_lines |
+            select('match', '^port ') | list | sort ==
+            (
+              ssh_listen_ports |
+              map('int') |
+              map('string') |
+              map('regex_replace', '^', 'port ') |
+              list |
+              sort
+            )
         fail_msg: >-
-          Effective sshd settings do not satisfy the key-only access policy.
+          Effective sshd settings do not satisfy the reviewed key-only SSH
+          listener policy.
 
     - name: >-
         Reload SSH only after the candidate configuration passes validation

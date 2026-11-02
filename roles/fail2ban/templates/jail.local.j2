@@ -1,8 +1,9 @@
 [DEFAULT]
 backend = systemd
-bantime = 10m
-findtime = 10m
-maxretry = 6
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
 
 [sshd]
 enabled = true
+port = {{ bootstrap_managed_ssh_port }}

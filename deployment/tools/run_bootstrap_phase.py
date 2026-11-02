@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import json
 import os
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from typing import Iterator, Mapping
 from bootstrap_inventory import (
     BootstrapValidationError,
     DISPATCH_APP_ACTOR_ID,
+    INITIAL_BOOTSTRAP_SSH_PORT,
     ROOT,
     validate_dispatch,
     validate_inventory_path,
@@ -33,7 +35,15 @@ PHASE_PLAYBOOKS = {
     "admin-key-proof": Path("playbooks/prove-admin-key.yml"),
     "ssh-hardening": Path("playbooks/harden-ssh.yml"),
     "post-hardening-proof": Path("playbooks/prove-admin-key.yml"),
+    "finalize-ssh-port": Path("playbooks/finalize-ssh-port.yml"),
+    "post-port-finalization-proof": Path("playbooks/prove-admin-key.yml"),
+    "fail2ban-enable": Path("playbooks/enable-fail2ban.yml"),
+    "post-fail2ban-proof": Path("playbooks/prove-admin-key.yml"),
+    "fail2ban-rollback": Path("playbooks/disable-fail2ban.yml"),
 }
+INITIAL_SSH_PORT_PHASES = frozenset(
+    {"initial-access", "admin-key-proof", "ssh-hardening"}
+)
 
 
 class BootstrapPhaseError(ValueError):
@@ -50,15 +60,32 @@ def inventory_validation_environment(
     }
 
 
-def build_command(inventory_path: str, target: str, playbook: Path) -> list[str]:
-    return [
+def build_command(
+    inventory_path: str,
+    target: str,
+    playbook: Path,
+    *,
+    connection_port: int | None = None,
+) -> list[str]:
+    command = [
         "ansible-playbook",
         "--inventory",
         inventory_path,
         "--limit",
         target,
-        playbook.as_posix(),
     ]
+    if connection_port is not None:
+        if (
+            isinstance(connection_port, bool)
+            or not isinstance(connection_port, int)
+            or not 1 <= connection_port <= 65535
+        ):
+            raise BootstrapPhaseError("bootstrap connection port is invalid")
+        command.extend(
+            ["--extra-vars", json.dumps({"ansible_port": connection_port})]
+        )
+    command.append(playbook.as_posix())
+    return command
 
 
 def private_key_bytes(secret_value: str) -> bytes:
@@ -76,14 +103,13 @@ def private_key_bytes(secret_value: str) -> bytes:
         if not key_bytes:
             raise BootstrapPhaseError("admin SSH key secret is empty")
     else:
-        if "\r" in secret_value:
-            raise BootstrapPhaseError(
-                "admin SSH key secret must use LF line endings"
-            )
         key_bytes = secret_value.encode("utf-8")
 
+    key_bytes = key_bytes.replace(b"\r\n", b"\n")
     if b"\r" in key_bytes:
-        raise BootstrapPhaseError("admin SSH key secret must use LF line endings")
+        raise BootstrapPhaseError(
+            "admin SSH key secret must not contain bare carriage returns"
+        )
     return key_bytes
 
 
@@ -231,6 +257,10 @@ def _validate_phase_inputs(
             environment.get("ANSIBLE_INVENTORY_PATH"),
             require_inventory_path=True,
             command_environment=inventory_validation_environment(environment),
+            require_initial_ssh_port=(
+                phase == ADMIN_KEY_VALIDATION_PHASE
+                or phase in INITIAL_SSH_PORT_PHASES
+            ),
         )
     except BootstrapValidationError as exc:
         raise BootstrapPhaseError(str(exc)) from exc
@@ -267,8 +297,23 @@ def execute_phase(
         )
         return 0
 
+    connection_port = None
+    if phase in INITIAL_SSH_PORT_PHASES:
+        initial_port = host_variables.get("bootstrap_initial_ssh_port")
+        if (
+            isinstance(initial_port, bool)
+            or not isinstance(initial_port, int)
+            or initial_port != INITIAL_BOOTSTRAP_SSH_PORT
+        ):
+            raise BootstrapPhaseError(
+                "initial bootstrap SSH port is invalid"
+            )
+        connection_port = initial_port
     command = build_command(
-        inventory_path.as_posix(), target_host, PHASE_PLAYBOOKS[phase]
+        inventory_path.as_posix(),
+        target_host,
+        PHASE_PLAYBOOKS[phase],
+        connection_port=connection_port,
     )
 
     if phase == "initial-access":

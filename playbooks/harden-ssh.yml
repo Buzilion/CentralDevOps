@@ -5,6 +5,9 @@
   remote_user: "{{ bootstrap_admin_user }}"
   become: true
   vars:
+    ssh_listen_ports:
+      - "{{ bootstrap_initial_ssh_port }}"
+      - "{{ bootstrap_managed_ssh_port }}"
     ansible_ssh_common_args: >-
       {{ bootstrap_ssh_hostkey_args }}
       -o PreferredAuthentications=publickey
@@ -16,6 +19,8 @@
         that:
           - ansible_limit is defined
           - ansible_limit == inventory_hostname
+          - ansible_port | int == bootstrap_initial_ssh_port
+          - ssh_listen_ports | map('int') | list == [22, 4671]
           - >-
             lookup('ansible.builtin.env', 'ANSIBLE_PRIVATE_KEY_FILE') |
             length > 0

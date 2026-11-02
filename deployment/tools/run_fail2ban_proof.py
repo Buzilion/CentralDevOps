@@ -76,6 +76,7 @@ def _validate_inputs(
             require_inventory_path=True,
             command_environment=_validation_environment(environment),
             require_disposable=True,
+            require_initial_ssh_port=False,
         )
     except BootstrapValidationError as exc:
         raise BootstrapPhaseError(str(exc)) from exc

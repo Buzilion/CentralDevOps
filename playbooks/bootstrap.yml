@@ -15,6 +15,9 @@
         that:
           - ansible_limit is defined
           - ansible_limit == inventory_hostname
+          - ansible_port | int == bootstrap_initial_ssh_port
+          - bootstrap_initial_ssh_port == 22
+          - bootstrap_managed_ssh_port == 4671
           - provider_username is defined
           - >-
             lookup('ansible.builtin.env', 'VPS_INITIAL_ACCESS_PASSWORD') |

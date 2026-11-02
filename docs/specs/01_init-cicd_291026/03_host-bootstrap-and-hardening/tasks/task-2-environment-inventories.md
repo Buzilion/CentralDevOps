@@ -19,9 +19,9 @@ Create the separate Staging and Production inventory structure and a safe, repea
 ## Proposed approach
 
 1. Create per-Environment inventory roots and role groups without fabricating host entries or key material.
-2. Add only public admin-key configuration to reviewed group variables. Keep provider usernames, host addresses, ports, physical RAM, memory budget and SSH policy in the relevant host-vars file.
+2. Add only public admin-key configuration to reviewed group variables. Set `bootstrap_managed_ssh_port: 4671` in group variables. Keep provider usernames, host addresses, final `ansible_port: 4671`, initial `bootstrap_initial_ssh_port: 22`, physical RAM, memory budget and SSH policy in the relevant host-vars file.
 3. Encode the D4 initial budget and reserve values in the inventory contract. Each added host must declare physical memory, `platform_reserve_mib`, and `capacity_budget_mib`; assert budget does not exceed physical memory minus reserve.
-4. Implement a runbook procedure to collect a candidate host public key from an operator-controlled workstation, independently compare its fingerprint with the fingerprint shown in Sumopod's console, and add the verified key to the correct Environment's `known_hosts`. A workstation `ssh-keyscan` may collect the candidate but is not a trust source; never use a workflow-time scan.
+4. Fresh/reset hosts start with provider access on port 22 and must have provider-firewall port 4671 open. Implement a runbook procedure to re-verify the SSH fingerprint after a reset against the Sumopod console, then pin the same verified key under both `host` (port 22) and `[host]:4671` in the selected Environment's `known_hosts`. A workstation `ssh-keyscan` may collect a candidate but is not a trust source; never use a workflow-time scan.
 5. Add exact host-alias validation for `<env>-<purpose>-<number>` and exact membership validation against the chosen inventory. Bootstrap accepts exactly one host, never groups or patterns.
 6. Document how the selected GitHub Environment maps to its fixed inventory path. Inventory aliases and host data must not be accepted as arbitrary workflow-supplied connection details.
 
@@ -30,6 +30,7 @@ Create the separate Staging and Production inventory structure and a safe, repea
 - Staging and Production data are physically separate and have no cross-environment host references.
 - No actual IP, username, placeholder address, or unverified host key is committed before a real host exists.
 - Host aliases and required memory facts follow the spec.
+- Missing/non-4671 final ports, missing/non-22 initial ports, or either missing endpoint pin fail preflight.
 - Unknown, wildcard, group, and other-Environment-only targets fail validation before SSH.
 - Effective SSH configuration requires the selected committed host-key file and rejects a mismatched pin.
 

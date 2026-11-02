@@ -1,7 +1,8 @@
 ---
 ansible_host: 43.157.247.221
+ansible_port: 4671
+bootstrap_initial_ssh_port: 22
 provider_username: ubuntu
-# Set ansible_port only when it is not 22.
 physical_memory_mib: 3723 # Observed by Ansible on 2026-11-01 during disposable bootstrap
 platform_reserve_mib: 1536 # Provisional Production reserve; review after baseline
 capacity_budget_mib: 2048 # Conservative budget under the Production ceiling

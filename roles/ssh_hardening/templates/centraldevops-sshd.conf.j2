@@ -1,3 +1,6 @@
+{% for port in ssh_listen_ports %}
+Port {{ port }}
+{% endfor %}
 PubkeyAuthentication yes
 AuthenticationMethods publickey
 PermitRootLogin no

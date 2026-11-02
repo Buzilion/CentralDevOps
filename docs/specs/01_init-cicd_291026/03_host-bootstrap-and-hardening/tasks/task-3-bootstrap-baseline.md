@@ -22,7 +22,7 @@ Implement the provider-credential phase that creates the separate account identi
 1. Implement the initial phase using the provider username and password only for the target in the selected inventory.
 2. Create `cdo-admin` and `cdo-deploy`. Grant `cdo-admin` passwordless sudo for Ansible `become`; set `cdo-deploy` password login disabled and do not grant it sudo, `docker` group membership, or the admin key.
 3. Apply OS package updates and enable automatic security updates. Avoid making a reboot or lockout decision implicitly; report when a reboot is required and keep it an operator-controlled step.
-4. Configure UFW as the base host firewall: default-deny inbound, allow SSH and TCP 80/443, permit required outbound traffic, and never open PostgreSQL/app/Docker API ports. Preserve the active SSH path while applying rules.
+4. On a fresh/reset host, bootstrap connects through port 22. Configure UFW default-deny inbound and temporarily allow SSH on both 22 and 4671 before enabling the firewall; also allow TCP 80/443, permit required outbound traffic, and never open PostgreSQL/app/Docker API ports. Keep port 22 open until a fresh admin-key login on 4671 is proven. Finalization removes the UFW 22 rule over the verified 4671 session.
 5. Install the Environment's admin public key, without changing sshd root/password policy in this task.
 6. Use `no_log` for secret-bearing tasks; never echo connection secrets or pass them in a command-line argument.
 7. Implement D3's source allowlist rule and exception recording. Do not apply an allowlist that blocks the selected runner; do not claim GitHub-hosted runner egress is static.
@@ -32,6 +32,7 @@ Implement the provider-credential phase that creates the separate account identi
 - Accounts, package state, firewall, and public-key installation converge idempotently.
 - `cdo-admin` can use Ansible privilege escalation; `cdo-deploy` is not privileged and has no Docker access.
 - The existing provider login remains usable after the first phase.
+- The initial provider connection and admin-key proof use port 22. The base UFW rules preserve both ports during transition; finalization removes port 22 after 4671 access is proven.
 - No SSH hardening task can run in the initial phase.
 - Ansible output, logs, and artifacts contain no credential values.
 

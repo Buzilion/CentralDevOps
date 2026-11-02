@@ -40,28 +40,3 @@
 
   roles:
     - fail2ban
-
-  post_tasks:
-    - name: Confirm the fail2ban service is active
-      ansible.builtin.command:
-        argv:
-          - systemctl
-          - is-active
-          - fail2ban
-      register: fail2ban_service
-      changed_when: false
-      failed_when: >-
-        fail2ban_service.rc != 0 or
-        fail2ban_service.stdout | trim != "active"
-      no_log: true
-
-    - name: Confirm the SSH jail is loaded
-      ansible.builtin.command:
-        argv:
-          - fail2ban-client
-          - status
-          - sshd
-      register: fail2ban_sshd_jail
-      changed_when: false
-      failed_when: fail2ban_sshd_jail.rc != 0
-      no_log: true

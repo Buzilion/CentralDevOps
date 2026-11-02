@@ -1,5 +1,6 @@
 import base64
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,54 @@ SPEC.loader.exec_module(RUN_BOOTSTRAP_PHASE)
 
 
 class BootstrapPhaseTests(unittest.TestCase):
+    def test_initial_phases_require_both_host_key_pins(self) -> None:
+        environment = {
+            "BOOTSTRAP_ENVIRONMENT": "Staging",
+            "BOOTSTRAP_TARGET_HOST": "stg-aio-01",
+            "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
+            "BOOTSTRAP_ACTOR_ID": "12345",
+            "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+        }
+        phases = (
+            ("validate-admin-key", True),
+            ("initial-access", True),
+            ("admin-key-proof", True),
+            ("ssh-hardening", True),
+            ("post-hardening-proof", False),
+            ("finalize-ssh-port", False),
+            ("post-port-finalization-proof", False),
+            ("fail2ban-enable", False),
+            ("post-fail2ban-proof", False),
+            ("fail2ban-rollback", False),
+        )
+
+        for phase, require_initial_pin in phases:
+            with self.subTest(phase=phase):
+                with mock.patch.object(
+                    RUN_BOOTSTRAP_PHASE,
+                    "validate_dispatch",
+                ):
+                    with mock.patch.object(
+                        RUN_BOOTSTRAP_PHASE,
+                        "validate_inventory_path",
+                        return_value=Path("inventories/staging/hosts.yml"),
+                    ):
+                        with mock.patch.object(
+                            RUN_BOOTSTRAP_PHASE,
+                            "validate_target",
+                            return_value={},
+                        ) as validate_target:
+                            RUN_BOOTSTRAP_PHASE._validate_phase_inputs(
+                                phase, environment, Path(".")
+                            )
+
+                self.assertEqual(
+                    validate_target.call_args.kwargs[
+                        "require_initial_ssh_port"
+                    ],
+                    require_initial_pin,
+                )
+
     def test_inventory_validation_does_not_inherit_bootstrap_secrets(self) -> None:
         environment = {
             "BOOTSTRAP_ENVIRONMENT": "Staging",
@@ -60,6 +109,210 @@ class BootstrapPhaseTests(unittest.TestCase):
             ],
         )
 
+    def test_initial_bootstrap_phases_connect_on_port_22(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            root = Path(directory)
+            runner_temp = root / "runner-temp"
+            runner_temp.mkdir()
+            host_variables = {"bootstrap_initial_ssh_port": 22}
+
+            for phase in (
+                "initial-access",
+                "admin-key-proof",
+                "ssh-hardening",
+            ):
+                with self.subTest(phase=phase):
+                    environment = {
+                        "BOOTSTRAP_ENVIRONMENT": "Staging",
+                        "BOOTSTRAP_TARGET_HOST": "stg-disposable-01",
+                        "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
+                        "BOOTSTRAP_ACTOR_ID": "12345",
+                        "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+                        "RUNNER_TEMP": str(runner_temp),
+                    }
+                    if phase == "initial-access":
+                        environment["VPS_INITIAL_ACCESS_PASSWORD"] = (
+                            "synthetic-initial-password"
+                        )
+                    else:
+                        environment["ANSIBLE_SSH_PRIVATE_KEY"] = (
+                            "synthetic-private-key"
+                        )
+
+                    with mock.patch.object(
+                        RUN_BOOTSTRAP_PHASE,
+                        "_validate_phase_inputs",
+                        return_value=(
+                            Path("inventories/staging/hosts.yml"),
+                            "stg-disposable-01",
+                            host_variables,
+                        ),
+                    ):
+                        with mock.patch.object(
+                            RUN_BOOTSTRAP_PHASE.subprocess,
+                            "run",
+                            return_value=SimpleNamespace(returncode=0),
+                        ) as run:
+                            result = RUN_BOOTSTRAP_PHASE.execute_phase(
+                                phase,
+                                root=root,
+                                environment=environment,
+                            )
+
+                    self.assertEqual(result, 0)
+                    command = run.call_args.args[0]
+                    extra_vars_index = command.index("--extra-vars")
+                    self.assertEqual(
+                        json.loads(command[extra_vars_index + 1]),
+                        {"ansible_port": 22},
+                    )
+
+            self.assertEqual(list(runner_temp.iterdir()), [])
+
+    def test_final_port_phases_use_the_inventory_port(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            root = Path(directory)
+            runner_temp = root / "runner-temp"
+            runner_temp.mkdir()
+
+            for phase, playbook in (
+                ("post-hardening-proof", "prove-admin-key.yml"),
+                ("finalize-ssh-port", "finalize-ssh-port.yml"),
+                ("post-port-finalization-proof", "prove-admin-key.yml"),
+            ):
+                with self.subTest(phase=phase):
+                    environment = {
+                        "BOOTSTRAP_ENVIRONMENT": "Staging",
+                        "BOOTSTRAP_TARGET_HOST": "stg-disposable-01",
+                        "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
+                        "BOOTSTRAP_ACTOR_ID": "12345",
+                        "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+                        "ANSIBLE_SSH_PRIVATE_KEY": "synthetic-private-key",
+                        "RUNNER_TEMP": str(runner_temp),
+                    }
+                    with mock.patch.object(
+                        RUN_BOOTSTRAP_PHASE,
+                        "_validate_phase_inputs",
+                        return_value=(
+                            Path("inventories/staging/hosts.yml"),
+                            "stg-disposable-01",
+                            {},
+                        ),
+                    ):
+                        with mock.patch.object(
+                            RUN_BOOTSTRAP_PHASE.subprocess,
+                            "run",
+                            return_value=SimpleNamespace(returncode=0),
+                        ) as run:
+                            result = RUN_BOOTSTRAP_PHASE.execute_phase(
+                                phase,
+                                root=root,
+                                environment=environment,
+                            )
+
+                    self.assertEqual(result, 0)
+                    command = run.call_args.args[0]
+                    self.assertNotIn("--extra-vars", command)
+                    self.assertEqual(command[-1], f"playbooks/{playbook}")
+
+            self.assertEqual(list(runner_temp.iterdir()), [])
+
+    def test_fail2ban_service_phase_uses_raw_key_file_and_cleans_up(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            root = Path(directory)
+            runner_temp = root / "runner-temp"
+            runner_temp.mkdir()
+            raw_private_key = (
+                "synthetic-admin-key-line-one\r\n"
+                "synthetic-admin-key-line-two\r\n"
+            )
+            environment = {
+                "BOOTSTRAP_ENVIRONMENT": "Staging",
+                "BOOTSTRAP_TARGET_HOST": "stg-aio-01",
+                "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
+                "BOOTSTRAP_ACTOR_ID": "12345",
+                "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+                "ANSIBLE_SSH_PRIVATE_KEY": raw_private_key,
+                "VPS_INITIAL_ACCESS_PASSWORD": "initial-secret",
+                "RUNNER_TEMP": str(runner_temp),
+            }
+
+            with mock.patch.object(
+                RUN_BOOTSTRAP_PHASE,
+                "_validate_phase_inputs",
+                return_value=(
+                    Path("inventories/staging/hosts.yml"),
+                    "stg-aio-01",
+                    {},
+                ),
+            ):
+                with mock.patch.object(
+                    RUN_BOOTSTRAP_PHASE.subprocess,
+                    "run",
+                    return_value=SimpleNamespace(returncode=0),
+                ) as run:
+                    result = RUN_BOOTSTRAP_PHASE.execute_phase(
+                        "fail2ban-enable",
+                        root=root,
+                        environment=environment,
+                    )
+
+            self.assertEqual(result, 0)
+            command = run.call_args.args[0]
+            child_environment = run.call_args.kwargs["env"]
+            self.assertEqual(command[-1], "playbooks/enable-fail2ban.yml")
+            self.assertNotIn(raw_private_key, command)
+            self.assertNotIn(raw_private_key, child_environment.values())
+            self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", child_environment)
+            self.assertNotIn("VPS_INITIAL_ACCESS_PASSWORD", child_environment)
+            self.assertEqual(list(runner_temp.iterdir()), [])
+
+    def test_fail2ban_rollback_phase_uses_managed_host_playbook(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            root = Path(directory)
+            runner_temp = root / "runner-temp"
+            runner_temp.mkdir()
+            environment = {
+                "BOOTSTRAP_ENVIRONMENT": "Staging",
+                "BOOTSTRAP_TARGET_HOST": "stg-aio-01",
+                "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
+                "BOOTSTRAP_ACTOR_ID": "12345",
+                "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
+                "ANSIBLE_SSH_PRIVATE_KEY": "synthetic-private-key",
+                "RUNNER_TEMP": str(runner_temp),
+            }
+
+            with mock.patch.object(
+                RUN_BOOTSTRAP_PHASE,
+                "_validate_phase_inputs",
+                return_value=(
+                    Path("inventories/staging/hosts.yml"),
+                    "stg-aio-01",
+                    {},
+                ),
+            ):
+                with mock.patch.object(
+                    RUN_BOOTSTRAP_PHASE.subprocess,
+                    "run",
+                    return_value=SimpleNamespace(returncode=0),
+                ) as run:
+                    result = RUN_BOOTSTRAP_PHASE.execute_phase(
+                        "fail2ban-rollback",
+                        root=root,
+                        environment=environment,
+                    )
+
+            self.assertEqual(result, 0)
+            command = run.call_args.args[0]
+            child_environment = run.call_args.kwargs["env"]
+            self.assertEqual(command[-1], "playbooks/disable-fail2ban.yml")
+            self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", child_environment)
+            self.assertEqual(list(runner_temp.iterdir()), [])
+
     def test_admin_key_file_is_private_and_removed_after_success(self) -> None:
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
@@ -70,6 +323,22 @@ class BootstrapPhaseTests(unittest.TestCase):
                 if os.name != "nt":
                     self.assertEqual(key_path.stat().st_mode & 0o777, 0o600)
             self.assertFalse(key_path.exists())
+
+    def test_raw_crlf_admin_key_is_normalized_before_writing(self) -> None:
+        temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
+        with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
+            with RUN_BOOTSTRAP_PHASE.private_key_file(
+                "first line\r\nsecond line\r\n", Path(directory)
+            ) as key_path:
+                self.assertEqual(key_path.read_bytes(), b"first line\nsecond line\n")
+            self.assertFalse(key_path.exists())
+
+    def test_raw_admin_key_rejects_bare_carriage_returns(self) -> None:
+        with self.assertRaisesRegex(
+            RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+            "bare carriage returns",
+        ):
+            RUN_BOOTSTRAP_PHASE.private_key_bytes("first line\rsecond line")
 
     def test_base64_admin_key_is_written_as_exact_bytes(self) -> None:
         private_key = b"synthetic admin key bytes\n"
@@ -319,6 +588,40 @@ class AdminKeyValidationTests(unittest.TestCase):
         )
         private_key = private_key_path.read_text(encoding="utf-8")
         public_key = private_key_path.with_suffix(".pub").read_text(encoding="utf-8")
+        RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
+            private_key,
+            public_key,
+            directory=self.runner_temp,
+        )
+        self.assertEqual(list(self.runner_temp.iterdir()), [])
+
+    @unittest.skipIf(
+        os.name == "nt" or not shutil.which("ssh-keygen"),
+        "OpenSSH key permissions are supported in the Ubuntu runner",
+    )
+    def test_real_crlf_private_key_matches_after_normalization(self) -> None:
+        private_key_path = self.fixture_root / "generated-crlf-admin-key"
+        subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-f",
+                str(private_key_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        private_key = private_key_path.read_text(encoding="utf-8").replace(
+            "\n", "\r\n"
+        )
+        public_key = private_key_path.with_suffix(".pub").read_text(
+            encoding="utf-8"
+        )
         RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
             private_key,
             public_key,
