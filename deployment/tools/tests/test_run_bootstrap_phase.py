@@ -22,6 +22,13 @@ sys.modules[SPEC.name] = RUN_BOOTSTRAP_PHASE
 SPEC.loader.exec_module(RUN_BOOTSTRAP_PHASE)
 
 
+def encoded_private_key_secret(private_key: str | bytes) -> str:
+    key_bytes = (
+        private_key.encode("utf-8") if isinstance(private_key, str) else private_key
+    )
+    return "base64:" + base64.b64encode(key_bytes).decode("ascii")
+
+
 class BootstrapPhaseTests(unittest.TestCase):
     def test_initial_phases_require_both_host_key_pins(self) -> None:
         environment = {
@@ -137,7 +144,7 @@ class BootstrapPhaseTests(unittest.TestCase):
                         )
                     else:
                         environment["ANSIBLE_SSH_PRIVATE_KEY"] = (
-                            "synthetic-private-key"
+                            encoded_private_key_secret("synthetic-private-key")
                         )
 
                     with mock.patch.object(
@@ -189,7 +196,9 @@ class BootstrapPhaseTests(unittest.TestCase):
                         "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
                         "BOOTSTRAP_ACTOR_ID": "12345",
                         "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
-                        "ANSIBLE_SSH_PRIVATE_KEY": "synthetic-private-key",
+                        "ANSIBLE_SSH_PRIVATE_KEY": encoded_private_key_secret(
+                            "synthetic-private-key"
+                        ),
                         "RUNNER_TEMP": str(runner_temp),
                     }
                     with mock.patch.object(
@@ -219,15 +228,15 @@ class BootstrapPhaseTests(unittest.TestCase):
 
             self.assertEqual(list(runner_temp.iterdir()), [])
 
-    def test_fail2ban_service_phase_uses_raw_key_file_and_cleans_up(self) -> None:
+    def test_fail2ban_service_phase_uses_base64_key_file_and_cleans_up(self) -> None:
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
             root = Path(directory)
             runner_temp = root / "runner-temp"
             runner_temp.mkdir()
-            raw_private_key = (
-                "synthetic-admin-key-line-one\r\n"
-                "synthetic-admin-key-line-two\r\n"
+            private_key_secret = encoded_private_key_secret(
+                b"synthetic-admin-key-line-one\r\n"
+                b"synthetic-admin-key-line-two\r\n"
             )
             environment = {
                 "BOOTSTRAP_ENVIRONMENT": "Staging",
@@ -235,7 +244,7 @@ class BootstrapPhaseTests(unittest.TestCase):
                 "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
                 "BOOTSTRAP_ACTOR_ID": "12345",
                 "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
-                "ANSIBLE_SSH_PRIVATE_KEY": raw_private_key,
+                "ANSIBLE_SSH_PRIVATE_KEY": private_key_secret,
                 "VPS_INITIAL_ACCESS_PASSWORD": "initial-secret",
                 "RUNNER_TEMP": str(runner_temp),
             }
@@ -264,8 +273,8 @@ class BootstrapPhaseTests(unittest.TestCase):
             command = run.call_args.args[0]
             child_environment = run.call_args.kwargs["env"]
             self.assertEqual(command[-1], "playbooks/enable-fail2ban.yml")
-            self.assertNotIn(raw_private_key, command)
-            self.assertNotIn(raw_private_key, child_environment.values())
+            self.assertNotIn(private_key_secret, command)
+            self.assertNotIn(private_key_secret, child_environment.values())
             self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", child_environment)
             self.assertNotIn("VPS_INITIAL_ACCESS_PASSWORD", child_environment)
             self.assertEqual(list(runner_temp.iterdir()), [])
@@ -282,7 +291,9 @@ class BootstrapPhaseTests(unittest.TestCase):
                 "BOOTSTRAP_REF": "refs/heads/feature/host-bootstrap",
                 "BOOTSTRAP_ACTOR_ID": "12345",
                 "ANSIBLE_INVENTORY_PATH": "inventories/staging/hosts.yml",
-                "ANSIBLE_SSH_PRIVATE_KEY": "synthetic-private-key",
+                "ANSIBLE_SSH_PRIVATE_KEY": encoded_private_key_secret(
+                    "synthetic-private-key"
+                ),
                 "RUNNER_TEMP": str(runner_temp),
             }
 
@@ -317,28 +328,47 @@ class BootstrapPhaseTests(unittest.TestCase):
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
             with RUN_BOOTSTRAP_PHASE.private_key_file(
-                "synthetic-private-key", Path(directory)
+                encoded_private_key_secret("synthetic-private-key"), Path(directory)
             ) as key_path:
                 self.assertTrue(key_path.is_file())
                 if os.name != "nt":
                     self.assertEqual(key_path.stat().st_mode & 0o777, 0o600)
             self.assertFalse(key_path.exists())
 
-    def test_raw_crlf_admin_key_is_normalized_before_writing(self) -> None:
+    def test_base64_crlf_admin_key_is_normalized_before_writing(self) -> None:
         temporary_parent = os.environ.get("CENTRALDEVOPS_TEST_TMPDIR")
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
             with RUN_BOOTSTRAP_PHASE.private_key_file(
-                "first line\r\nsecond line\r\n", Path(directory)
+                encoded_private_key_secret("first line\r\nsecond line\r\n"),
+                Path(directory),
             ) as key_path:
                 self.assertEqual(key_path.read_bytes(), b"first line\nsecond line\n")
             self.assertFalse(key_path.exists())
 
-    def test_raw_admin_key_rejects_bare_carriage_returns(self) -> None:
+    def test_private_key_secret_requires_base64_prefix(self) -> None:
+        with self.assertRaisesRegex(
+            RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+            "Base64-encoded with the base64: prefix",
+        ):
+            RUN_BOOTSTRAP_PHASE.private_key_bytes(
+                "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n"
+            )
+
+        with self.assertRaisesRegex(
+            RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
+            "Base64-encoded with the base64: prefix",
+        ):
+            RUN_BOOTSTRAP_PHASE.private_key_bytes(
+                base64.b64encode(b"synthetic key").decode("ascii")
+            )
+
+    def test_base64_admin_key_rejects_bare_carriage_returns(self) -> None:
+        secret = encoded_private_key_secret(b"first line\rsecond line")
         with self.assertRaisesRegex(
             RUN_BOOTSTRAP_PHASE.BootstrapPhaseError,
             "bare carriage returns",
         ):
-            RUN_BOOTSTRAP_PHASE.private_key_bytes("first line\rsecond line")
+            RUN_BOOTSTRAP_PHASE.private_key_bytes(secret)
 
     def test_base64_admin_key_is_written_as_exact_bytes(self) -> None:
         private_key = b"synthetic admin key bytes\n"
@@ -370,7 +400,8 @@ class BootstrapPhaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=temporary_parent) as directory:
             with self.assertRaisesRegex(RuntimeError, "test failure"):
                 with RUN_BOOTSTRAP_PHASE.private_key_file(
-                    "synthetic-private-key", Path(directory)
+                    encoded_private_key_secret("synthetic-private-key"),
+                    Path(directory),
                 ) as key_path:
                     self.assertTrue(key_path.is_file())
                     raise RuntimeError("test failure")
@@ -385,7 +416,9 @@ class AdminKeyValidationTests(unittest.TestCase):
         self.fixture_root = Path(self.fixture_directory.name)
         self.runner_temp = self.fixture_root / "runner-temp"
         self.runner_temp.mkdir()
-        self.admin_private_key = "synthetic-admin-private-key"
+        self.admin_private_key_secret = encoded_private_key_secret(
+            "synthetic-admin-private-key"
+        )
         self.admin_public_key = self._public_key(1)
         self.other_public_key = self._public_key(2)
 
@@ -402,7 +435,7 @@ class AdminKeyValidationTests(unittest.TestCase):
         environment = dict(os.environ)
         environment.update(
             {
-                "ANSIBLE_SSH_PRIVATE_KEY": self.admin_private_key,
+                "ANSIBLE_SSH_PRIVATE_KEY": self.admin_private_key_secret,
                 "ANSIBLE_PRIVATE_KEY_FILE": "unexpected-key-path",
                 "BOOTSTRAP_PHASE": RUN_BOOTSTRAP_PHASE.ADMIN_KEY_VALIDATION_PHASE,
                 "RUNNER_TEMP": str(self.runner_temp),
@@ -436,7 +469,7 @@ class AdminKeyValidationTests(unittest.TestCase):
         command = run.call_args.args[0]
         child_environment = run.call_args.kwargs["env"]
         self.assertEqual(command[0], "ssh-keygen")
-        self.assertNotIn(self.admin_private_key, command)
+        self.assertNotIn(self.admin_private_key_secret, command)
         self.assertNotIn("ANSIBLE_SSH_PRIVATE_KEY", child_environment)
         self.assertNotIn("VPS_INITIAL_ACCESS_PASSWORD", child_environment)
         self.assertNotIn("ANSIBLE_PRIVATE_KEY_FILE", child_environment)
@@ -455,7 +488,7 @@ class AdminKeyValidationTests(unittest.TestCase):
                 "does not match the reviewed inventory public key",
             ):
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-                    self.admin_private_key,
+                    self.admin_private_key_secret,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
@@ -477,7 +510,7 @@ class AdminKeyValidationTests(unittest.TestCase):
                 "ssh-keygen reported invalid format",
             ) as error:
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-                    self.admin_private_key,
+                    self.admin_private_key_secret,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
@@ -499,7 +532,7 @@ class AdminKeyValidationTests(unittest.TestCase):
                 "could not be decoded by OpenSSH/libcrypto",
             ) as error:
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-                    self.admin_private_key,
+                    self.admin_private_key_secret,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
@@ -521,7 +554,7 @@ class AdminKeyValidationTests(unittest.TestCase):
                 "requires an unencrypted key",
             ) as error:
                 RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-                    self.admin_private_key,
+                    self.admin_private_key_secret,
                     self.admin_public_key,
                     directory=self.runner_temp,
                 )
@@ -559,7 +592,7 @@ class AdminKeyValidationTests(unittest.TestCase):
             "passphrase-protected",
         ):
             RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-                private_key,
+                encoded_private_key_secret(private_key),
                 public_key,
                 directory=self.runner_temp,
             )
@@ -589,7 +622,7 @@ class AdminKeyValidationTests(unittest.TestCase):
         private_key = private_key_path.read_text(encoding="utf-8")
         public_key = private_key_path.with_suffix(".pub").read_text(encoding="utf-8")
         RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-            private_key,
+            encoded_private_key_secret(private_key),
             public_key,
             directory=self.runner_temp,
         )
@@ -623,7 +656,7 @@ class AdminKeyValidationTests(unittest.TestCase):
             encoding="utf-8"
         )
         RUN_BOOTSTRAP_PHASE.validate_admin_private_key(
-            private_key,
+            encoded_private_key_secret(private_key),
             public_key,
             directory=self.runner_temp,
         )
