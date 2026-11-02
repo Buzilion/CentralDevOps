@@ -1,7 +1,7 @@
 ---
 bootstrap_admin_user: cdo-admin
 bootstrap_deploy_user: cdo-deploy
-bootstrap_admin_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIfJJDW2fEIUXiQPLXmHQnAB2g+y9rjFIKtcQ8IcoEc6"
+bootstrap_admin_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICRxcPwT7PHe7x48gneti+uEMHLcwWZc62gtQTs91h5E cdo-admin@prd-disposable-01-2026-11-02"
 bootstrap_managed_ssh_port: 4671
 bootstrap_capacity_reference:
   physical_memory_mib: 3723 # Observed by Ansible on 2026-11-01 during disposable bootstrap
