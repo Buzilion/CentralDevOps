@@ -19,7 +19,7 @@ Audit every requirement in spec 03, retain evidence, and establish the safe hand
 
 1. Run syntax, lint, inventory, workflow, catalog, and negative tests from Tasks 1–5.
 2. Audit the disposable VPS proof and all evidence required by Task 6.
-3. Confirm no secrets or fake host data are committed and no credential appears in workflow logs or artifacts. Confirm the admin private-key secret is documented as raw file contents and does not require user-side Base64 encoding.
+3. Confirm no secrets or fake host data are committed and no credential appears in workflow logs or artifacts. Confirm the admin private-key secret is documented as `base64:` plus a single-line Base64 encoding, and that raw key text is rejected.
 4. Confirm the initial password was removed from the tested Environment after key access was verified.
 5. Confirm the dispatch App identity check and Production approval gate are active.
 6. Record PASS/FAIL against H-01 through H-13 in the runbook. Fix in-scope defects or leave the task and spec blocked; do not mark a failed requirement complete.

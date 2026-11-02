@@ -92,18 +92,19 @@ def private_key_bytes(secret_value: str) -> bytes:
     if not isinstance(secret_value, str) or not secret_value:
         raise BootstrapPhaseError("admin SSH key secret is missing")
 
-    if secret_value.startswith(BASE64_PRIVATE_KEY_PREFIX):
-        encoded_key = secret_value[len(BASE64_PRIVATE_KEY_PREFIX) :]
-        try:
-            key_bytes = base64.b64decode(encoded_key, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise BootstrapPhaseError(
-                "admin SSH key secret has an invalid base64 payload"
-            ) from exc
-        if not key_bytes:
-            raise BootstrapPhaseError("admin SSH key secret is empty")
-    else:
-        key_bytes = secret_value.encode("utf-8")
+    if not secret_value.startswith(BASE64_PRIVATE_KEY_PREFIX):
+        raise BootstrapPhaseError(
+            "admin SSH key secret must be Base64-encoded with the base64: prefix"
+        )
+    encoded_key = secret_value[len(BASE64_PRIVATE_KEY_PREFIX) :]
+    try:
+        key_bytes = base64.b64decode(encoded_key, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise BootstrapPhaseError(
+            "admin SSH key secret has an invalid base64 payload"
+        ) from exc
+    if not key_bytes:
+        raise BootstrapPhaseError("admin SSH key secret is empty")
 
     key_bytes = key_bytes.replace(b"\r\n", b"\n")
     if b"\r" in key_bytes:
