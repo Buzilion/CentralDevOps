@@ -77,7 +77,22 @@ The first install is controller-only. Do not set provider credentials or connect
 ## Adding a host and verifying its SSH pin
 
 1. Provision the host manually and confirm its Ubuntu Server 24.04 LTS image and initial SSH username in the Sumopod console.
-2. Generate a new environment-specific Ed25519 admin key pair on a trusted workstation. Commit only its public half to that Environment's `group_vars/all.yml`; set `ANSIBLE_SSH_PRIVATE_KEY` to `base64:` followed by a single-line Base64 encoding of the complete unencrypted private-key file. For example, from WSL/Linux: `{ printf 'base64:'; base64 -w0 "$HOME/.ssh/cdo-admin-production"; } | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Production`. Do not pass the secret with `--body`, print it, or store raw private-key text in the secret. Base64 is encoding, not encryption; treat the encoded value as the private key. The runner decodes it, normalizes CRLF to LF, and rejects values without the `base64:` prefix. The workflow rejects a passphrase-protected key because it has no passphrase secret. Do not reuse the disposable VPS key on a service host.
+2. Generate a new environment-specific Ed25519 admin key pair on a trusted workstation. Commit only its public half to that Environment's `group_vars/all.yml`. From the repository root, create a copyable secret value by piping the raw key file to the helper:
+
+   ```bash
+   cat "$HOME/.ssh/cdo-admin-production" | python3 deployment/tools/encode_ssh_private_key.py
+   ```
+
+   The helper writes exactly `base64:` followed by single-line Base64 to stdout, without a trailing newline. For manual copying, run it only in a trusted terminal without session recording; the output is private-key material and must not be saved or shared. To set the secret without displaying it, pipe the helper output directly to GitHub CLI:
+
+   ```bash
+   set -o pipefail
+   cat "$HOME/.ssh/cdo-admin-production" \
+     | python3 deployment/tools/encode_ssh_private_key.py \
+     | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Production
+   ```
+
+   Do not pass the secret with `--body` or put key contents in command-line arguments. Base64 is encoding, not encryption; treat the encoded value as the private key. The runner decodes it, normalizes CRLF to LF, and rejects values without the `base64:` prefix. The workflow rejects a passphrase-protected key because it has no passphrase secret. Do not reuse the disposable VPS key on a service host.
 3. Use the host alias format `<environment-code>-<purpose>-<two-digit-number>`, such as `stg-aio-01`. Add the exact alias to only its own `hosts.yml` and add a corresponding `host_vars/<alias>.yml` with `ansible_host`, `bootstrap_initial_ssh_port: 22`, final `ansible_port: 4671`, `provider_username`, `physical_memory_mib`, `platform_reserve_mib`, `capacity_budget_mib`, and either `ssh_source_cidrs` or a documented `ssh_source_policy_exception`. Set `bootstrap_managed_ssh_port: 4671` in the Environment's group variables. For fresh/reset hosts, keep provider TCP 22 available for initial access and permit provider TCP 4671 before bootstrap. For the user-authorized Production proof target, use `prd-disposable-01` and set `bootstrap_disposable: true`; do not use that alias for Production services.
 4. Measure physical RAM and reserve enough for the platform services. The initial reference values are Staging 2048/1024/1024 MiB (physical/reserve/app budget) and Production 4096/1536/2560 MiB. Lower the budget when measurements require it; the validator rejects a budget above physical memory minus reserve or the environment reference ceiling.
 5. After a reset, collect a candidate host key from port 22 with `ssh-keyscan -p 22` if needed. Use `ssh-keygen -lf` to inspect its fingerprint and compare it with the fingerprint displayed independently in the Sumopod console. A scan is only a candidate, not a trust source. After the fingerprint matches, add the same verified host key under both `host` (initial port 22) and `[host]:4671` in the selected `known_hosts` file. Once sshd is listening on 4671, confirm the key served there matches the verified fingerprint. Never trust a new key based only on the scan.

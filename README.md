@@ -22,6 +22,24 @@ In the design, each Environment maps to its corresponding deployment target. The
 - **Specifications:** [Spec roadmap](docs/specs/01_init-cicd_291026/00_spec-roadmap.md) · [Foundation and access spec](docs/specs/01_init-cicd_291026/01_foundation-and-access/spec.md)
 - **Operations:** [GitHub Environments apply and audit runbook](docs/runbooks/github-environments.md) · [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md)
 
+## Prepare the bootstrap SSH-key secret
+
+The bootstrap workflow requires `ANSIBLE_SSH_PRIVATE_KEY` to contain `base64:` followed by single-line Base64. From the repository root, pipe the complete unencrypted key file into the encoder.
+
+**WSL/Linux:**
+
+```sh
+cat "$HOME/.ssh/cdo-admin-production" | python3 deployment/tools/encode_ssh_private_key.py
+```
+
+**Native Windows PowerShell:**
+
+```powershell
+cmd.exe /c 'type "%USERPROFILE%\.ssh\cdo-admin-production" | py -3 deployment\tools\encode_ssh_private_key.py'
+```
+
+Replace the filename with the key for the selected Environment. The helper writes the exact prefixed value to stdout without a trailing newline. Base64 is not encryption; treat the output as private-key material. Only display it in a trusted terminal without session recording. To set the GitHub secret without displaying the value, use the direct-pipe command in the [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md).
+
 ## Target directory map — implementation added by later specs
 
 This is the intended layout, not a claim that every path exists. Later specs create implementation directories only when needed; no empty skeletons are added. The documentation directories and `deployment/tools/` already exist.
