@@ -22,39 +22,114 @@ In the design, each Environment maps to its corresponding deployment target. The
 - **Specifications:** [Spec roadmap](docs/specs/01_init-cicd_291026/00_spec-roadmap.md) · [Foundation and access spec](docs/specs/01_init-cicd_291026/01_foundation-and-access/spec.md)
 - **Operations:** [GitHub Environments apply and audit runbook](docs/runbooks/github-environments.md) · [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md)
 
-## Prepare the bootstrap SSH-key secret
+## Workflows
 
-The bootstrap workflow requires `ANSIBLE_SSH_PRIVATE_KEY` to contain `base64:` followed by single-line Base64. From the repository root, pipe the complete unencrypted key file into the encoder.
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `Lint` | Pull requests and pushes to `main` | Checks workflow security and syntax, inventory and Ansible configuration, naming rules, and Python tests. |
+| `Bootstrap VPS` | Manual dispatch | Bootstraps one fresh or reset Ubuntu Server 24.04 VPS in the selected GitHub Environment. |
 
-**WSL/Linux:**
+### Bootstrap a VPS
 
-```sh
-cat "$HOME/.ssh/cdo-admin-production" | python3 deployment/tools/encode_ssh_private_key.py
-```
+Use the [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md) for the full phase-by-phase procedure, recovery guidance, and disposable-host requirements. Follow these setup steps in order. The workflow does not provision VPS instances or manage the provider firewall.
 
-**Native Windows PowerShell:**
+1. **Provision the VPS and choose its Environment.** Create one Ubuntu Server 24.04 VPS in the provider console. Record its address, initial SSH username, and initial password. Keep provider-firewall TCP 22 open for initial access and allow TCP 4671 before starting the workflow. Bootstrap one VPS at a time in either the existing `Staging` or `Production` Environment; do not create an Environment per host.
 
-```powershell
-cmd.exe /c 'type "%USERPROFILE%\.ssh\cdo-admin-production" | py -3 deployment\tools\encode_ssh_private_key.py'
-```
+2. **Prepare the environment-specific admin key.** Generate a separate, unencrypted Ed25519 key pair for each Environment on a trusted workstation. The private key must be unencrypted for unattended use; only its public half belongs in the repository. Add that public key as `bootstrap_admin_public_key` in `inventories/<environment>/group_vars/all.yml`. The private half will be stored as an Environment secret in step 4.
 
-Replace the filename with the key for the selected Environment. The helper writes the exact prefixed value to stdout without a trailing newline. Base64 is not encryption; treat the output as private-key material. Only display it in a trusted terminal without session recording. To set the GitHub secret without displaying the value, use the direct-pipe command in the [VPS bootstrap runbook](docs/runbooks/bootstrap-vps.md).
+3. **Add and review the inventory entry.** Configure only the selected Environment's inventory:
 
-## Target directory map — implementation added by later specs
+   | File | Required information |
+   |---|---|
+   | `inventories/<environment>/hosts.yml` | Add the exact host alias under its inventory group. Use that same alias later as `target_host`. |
+   | `inventories/<environment>/host_vars/<alias>.yml` | Set `ansible_host`, final `ansible_port: 4671`, `bootstrap_initial_ssh_port: 22`, `provider_username`, observed `physical_memory_mib`, `platform_reserve_mib`, `capacity_budget_mib`, and either `ssh_source_cidrs` or a documented `ssh_source_policy_exception`. Set `bootstrap_disposable: true` only for an authorized disposable proof host. |
+   | `inventories/<environment>/group_vars/all.yml` | Set the matching `bootstrap_admin_public_key` and `bootstrap_managed_ssh_port: 4671`. The admin public key must match the private-key secret configured in step 4. |
+   | `inventories/<environment>/known_hosts` | Pin the host keys for both the initial port-22 endpoint and `[host]:4671`. First compare the fingerprint with the one shown independently in the provider console. `ssh-keyscan` output is only a candidate; never trust it without that comparison. |
 
-This is the intended layout, not a claim that every path exists. Later specs create implementation directories only when needed; no empty skeletons are added. The documentation directories and `deployment/tools/` already exist.
+   Use the naming and capacity rules in the runbook. Do not commit provider passwords, private keys, placeholder addresses, or unverified host keys. The workflow enables strict host-key checking, so a missing or mismatched pin stops the run before SSH.
 
-| Path | Purpose and timing |
+4. **Configure the selected GitHub Environment.** In repository **Settings → Environments → Staging or Production**, set the Environment variable `ANSIBLE_INVENTORY_PATH` to the fixed path for that Environment:
+
+   | Environment | `ANSIBLE_INVENTORY_PATH` |
+   |---|---|
+   | `Staging` | `inventories/staging/hosts.yml` |
+   | `Production` | `inventories/production/hosts.yml` |
+
+   Set the variable in the selected Environment's **Variables** section, or use GitHub CLI:
+
+   ```sh
+   gh variable set ANSIBLE_INVENTORY_PATH --repo Buzilion/CentralDevOps --env Staging --body "inventories/staging/hosts.yml"
+   gh variable set ANSIBLE_INVENTORY_PATH --repo Buzilion/CentralDevOps --env Production --body "inventories/production/hosts.yml"
+   ```
+
+   The workflow reads this path from the selected Environment and rejects a mismatch. It is not a workflow-dispatch input. The workflow also loads the checked-in `ansible.cfg` and installs the pinned Ansible controller and collections on its runner; operators do not need to configure an Ansible executable path to dispatch it.
+
+   Add these **Environment secrets** to the same selected Environment:
+
+   - `ANSIBLE_SSH_PRIVATE_KEY`: the complete unencrypted private key encoded as `base64:` followed by one line of Base64. Prefer piping it directly to `gh` so it is not printed or placed in shell history. Run from the repository root and use the key and Environment that match the inventory:
+
+     **WSL/Linux:**
+
+     ```sh
+     set -o pipefail
+     cat "$HOME/.ssh/cdo-admin-staging" \
+       | python3 deployment/tools/encode_ssh_private_key.py \
+       | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Staging
+     ```
+
+     **Native Windows PowerShell:**
+
+     ```powershell
+     cmd.exe /c 'type "%USERPROFILE%\.ssh\cdo-admin-staging" | py -3 deployment\tools\encode_ssh_private_key.py | gh secret set ANSIBLE_SSH_PRIVATE_KEY --repo Buzilion/CentralDevOps --env Staging'
+     ```
+
+     For Production, use the Production key filename and `--env Production`. Base64 is encoding, not encryption; treat the encoded value as private-key material. Do not display it, add it to a workflow input, or commit it.
+
+   - `VPS_INITIAL_ACCESS_PASSWORD`: the provider-issued password for this specific VPS. Set it in the selected Environment only when preparing a fresh or reset host. With GitHub CLI, omit `--body` to enter the value at the prompt:
+
+     ```sh
+     gh secret set VPS_INITIAL_ACCESS_PASSWORD --repo Buzilion/CentralDevOps --env Staging
+     ```
+
+     Use `--env Production` for Production. Never put this password in inventory or a dispatch input. Remove it only after the workflow confirms a fresh `cdo-admin` key login on port 22.
+
+5. **Validate and merge the reviewed configuration.** From the repository root, run the local checks:
+
+   ```sh
+   python3 deployment/tools/check-github-names.py
+   python3 -m unittest discover -s deployment/tools/tests
+   ```
+
+   On Windows, use `py -3` in place of `python3`. Open a pull request and wait for `Lint` to pass; it also validates both inventories, Ansible syntax and lint, and workflow security. Dispatch from a branch that contains the reviewed inventory change.
+
+6. **Dispatch the bootstrap.** In **Actions → Bootstrap VPS → Run workflow**, select a branch reference and provide:
+
+   - `target_environment`: exactly `Staging` or `Production`.
+   - `target_host`: the exact alias added to that Environment's `hosts.yml`.
+
+   Staging accepts branch refs and still uses its configured Environment review gate. Production requires a `release/*` branch and reviewer approval. The workflow rejects non-branch refs, an unknown or cross-Environment host alias, an incorrect inventory path, or invalid host/key configuration before making an SSH connection.
+
+7. **Wait for the proofs before closing access.** The workflow validates the target and SSH pins, then checks that the private key matches the reviewed public key before SSH. It uses the initial password for the port-22 bootstrap, proves a new admin-key login on port 22, and notifies you to remove `VPS_INITIAL_ACCESS_PASSWORD`. It then enables both SSH ports, proves a fresh login on 4671, finalizes SSH and the VPS firewall to port 4671 only, and proves another fresh login. **Only after that final 4671 proof succeeds**, remove provider-firewall TCP 22 and verify from outside the provider that 4671 is reachable and 22 is closed. Provider-firewall rules are not managed by Ansible. If a proof fails, stop and follow the runbook; do not remove the remaining access path or retry blindly.
+
+### Lint
+
+`Lint` runs automatically for every pull request and every push to `main`; it has no manual inputs. It checks GitHub Actions syntax and security, workflow naming and secret references, both Ansible inventories, playbook syntax and lint, and the `deployment/tools/tests` suite.
+
+## Future workflows
+
+No application deployment workflow is currently available. When one is added, document its trigger, required inputs, Environment variables and secrets, chronological run steps, verification, and rollback here.
+
+## Repository layout
+
+| Path | Purpose |
 |---|---|
-| `.github/CODEOWNERS` | Code ownership rules; added by this foundation task. |
-| `.github/workflows/`, `.github/actions/` | Central workflows and shared actions; added by later specs. |
-| `.github/rulesets/` | Repository branch protection ruleset; added by this foundation task. |
-| `inventories/{staging,production}/` | Environment-specific Ansible inventory; added by later specs. |
-| `apps/<app-slug>/` | Reviewed per-app deployment registry; added by later specs. |
-| `playbooks/`, `roles/<role_snake_case>/` | Ansible operations and reusable roles; added by later specs. |
-| `deployment/scripts/`, `deployment/nginx-templates/`, `deployment/keys/`, `deployment/schemas/` | Runtime scripts, templates, public keys, and schemas; added by later specs. |
-| `deployment/tools/` | Validation utilities; present and extended by later specs. |
-| `docs/prd/<initiative>/`, `docs/design/`, `docs/notes/requirements/<initiative>/<version>/`, `docs/runbooks/` | Requirements, enduring design, source notes, and operational procedures; present. |
+| `.github/workflows/` | Current `Lint` and `Bootstrap VPS` GitHub Actions workflows. |
+| `inventories/{staging,production}/` | Environment-specific hosts, variables, and pinned SSH host keys. |
+| `playbooks/` | Ansible bootstrap, SSH, access-proof, and Fail2ban operations. |
+| `roles/` | Reusable host, user, firewall, SSH-hardening, and Fail2ban tasks. |
+| `deployment/tools/` | Inventory and workflow validators, SSH-key encoder, phase runners, and tests. |
+| `ansible.cfg`, `requirements*.txt`, `requirements.yml` | Ansible defaults and pinned controller dependencies and collections. |
+| `docs/runbooks/` | Operator procedures, including the detailed VPS bootstrap runbook. |
 
 ## Conventions
 
