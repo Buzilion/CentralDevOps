@@ -34,9 +34,13 @@ Audit every requirement in spec 03, retain evidence, and establish the safe hand
 - No open failure blocks spec 04 from starting; the spec-01 prerequisite remains satisfied.
 - The checklist accurately reflects completed work.
 
+## Current disposition
+
+The repository owner attests that the post-reset disposable-host hardening proof was completed manually; the attestation in `docs/runbooks/bootstrap-vps.md` is sufficient to unblock local spec 04 implementation. Detailed per-requirement artifacts are waived for this handoff only and must not be inferred from the historical audit. This disposition does not claim that this acceptance-audit task or spec 04 runtime acceptance is complete, and it does not satisfy the `DISPOSABLE_VPS_PROOF_COMMIT` gate for non-disposable service-host operations.
+
 ## Verify
 
-Run the complete targeted test set defined by this spec and review the evidence log. The task is not complete if a required GitHub Environment, credential, or disposable-host proof is unavailable.
+Run the complete targeted test set defined by this spec and review the evidence log before marking this acceptance-audit task complete. The attestation above unblocks local spec 04 implementation but does not replace the evidence required to close this task.
 
 ## Out of scope
 

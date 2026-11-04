@@ -3,7 +3,7 @@
 | Item | Value |
 |---|---|
 | Project | `01_init-cicd_291026` (spec 04 of 15; see `../00_spec-roadmap.md`) |
-| Status | Draft for review; implementation blocked on completion of spec 03 |
+| Status | Draft for review; local implementation unblocked by the spec 03 operator attestation; host acceptance remains gated |
 | Depends on | `03_host-bootstrap-and-hardening` (its checklist must be complete before this spec is implemented) |
 | Parent PRD | `docs/prd/01_init-cicd_291026/prd-v1.md` |
 | Module PRDs | `docs/prd/01_init-cicd_291026/infrastructure-v1.md` (`INF`), `docs/prd/01_init-cicd_291026/access-and-secrets-v1.md` (`SEC`) |
@@ -17,7 +17,7 @@ This spec does not deploy an app or expose a public Docker, PostgreSQL, or app p
 
 ## Context
 
-- Spec 03 owns the first host bootstrap, hardened SSH access, base accounts, firewall, and pinned Ansible setup. Do not implement this spec or change any VPS until every task in spec 03's checklist is complete and its disposable-host hardening proof is recorded.
+- Spec 03 owns the first host bootstrap, hardened SSH access, base accounts, firewall, and pinned Ansible setup. Its checklist is complete, and the repository owner attested on 2026-11-04 that the post-reset disposable-host hardening proof was manually completed (see `docs/runbooks/bootstrap-vps.md`). This satisfies the prerequisite for local spec 04 implementation. It does not replace spec 04's disposable-host runtime acceptance or the reviewed `DISPOSABLE_VPS_PROOF_COMMIT` gate for non-disposable service-host bootstrap.
 - Spec 03 targets Ubuntu Server 24.04 LTS. Docker package and Compose versions must be selected and tested against that pinned host release; do not silently substitute another release.
 - The configure workflow's dispatch-App rejection uses the numeric actor identity proven by spec 02. Do not implement or enable the workflow until that evidence exists. Spec 01's workflow lint and name checker must also be available.
 - The initial host is an Ubuntu all-in-one VPS per Environment. Role groups and profile names must also support later split-host placement without workflow changes.
@@ -152,7 +152,7 @@ Update the Ansible requirements/configuration established by spec 03 only as nee
 
 | Situation | Behavior |
 |---|---|
-| Spec 03 checklist or disposable-host hardening proof is incomplete. | Do not implement or run configure against any VPS; report the prerequisite as blocked. |
+| Spec 03 checklist is incomplete or its operator attestation is absent. | Do not implement or configure any VPS; report the prerequisite as blocked. Once attested, local implementation may proceed, but host acceptance must use a disposable VPS and non-disposable service-host bootstrap remains blocked by the reviewed proof-commit gate. |
 | The workflow ref is not allowed by `target_environment`, the caller is the dispatch App, or an input is invalid. | Fail/skip before Environment credentials and before any connection; report the failed preflight check without printing secrets. |
 | Limit is unknown, malformed, or belongs to the other Environment. | Reject before SSH; never fall back to the full inventory. |
 | A profile references a role not yet delivered or an invalid/missing inventory fact. | Fail preflight with the exact missing role/fact; do not apply a partial profile. |
