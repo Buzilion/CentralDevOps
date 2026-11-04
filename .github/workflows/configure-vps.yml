@@ -1,0 +1,129 @@
+name: Configure VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: GitHub Environment to configure
+        required: true
+        type: choice
+        options:
+          - Staging
+          - Production
+      profile:
+        description: Exact configuration profile
+        required: true
+        type: choice
+        options:
+          - app
+          - proxy
+          - database
+          - monitoring
+          - all-in-one
+      limit:
+        description: Exact inventory host alias or group; empty selects all hosts
+        required: false
+        default: ""
+        type: string
+      check_mode:
+        description: Run in Ansible check mode and show diffs
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: configure-${{ inputs.target_environment }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  preflight:
+    name: Secret-free preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      target_environment: ${{ steps.validate.outputs.target_environment }}
+      profile: ${{ steps.validate.outputs.profile }}
+      inventory_path: ${{ steps.validate.outputs.inventory_path }}
+      limit: ${{ steps.validate.outputs.limit }}
+      check_mode: ${{ steps.validate.outputs.check_mode }}
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+      CONFIGURE_TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+      CONFIGURE_PROFILE: ${{ inputs.profile }}
+      CONFIGURE_LIMIT: ${{ inputs.limit }}
+      CONFIGURE_CHECK_MODE: ${{ inputs.check_mode }}
+      CONFIGURE_REF: ${{ github.ref }}
+      CONFIGURE_ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install the pinned Ansible controller
+        run: |
+          set -euo pipefail
+          python3 -m venv .ansible-venv
+          . .ansible-venv/bin/activate
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            -r requirements.txt
+
+      - name: Validate caller, Environment inventory, and exact limit
+        id: validate
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          python3 deployment/tools/validate-configure-inputs.py
+
+  configure:
+    name: Configure selected Environment
+    needs: preflight
+    if: needs.preflight.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    environment:
+      name: ${{ needs.preflight.outputs.target_environment }}
+    env:
+      ANSIBLE_CONFIG: ${{ github.workspace }}/ansible.cfg
+      ANSIBLE_INVENTORY_PATH: ${{ needs.preflight.outputs.inventory_path }}
+      CONFIGURE_TARGET_ENVIRONMENT: ${{ needs.preflight.outputs.target_environment }}
+      CONFIGURE_PROFILE: ${{ needs.preflight.outputs.profile }}
+      CONFIGURE_LIMIT: ${{ needs.preflight.outputs.limit }}
+      CONFIGURE_CHECK_MODE: ${{ needs.preflight.outputs.check_mode }}
+      CONFIGURE_REF: ${{ github.ref }}
+      CONFIGURE_ACTOR_ID: ${{ github.actor_id }}
+    steps:
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install the pinned Ansible controller and collections
+        run: |
+          set -euo pipefail
+          python3 -m venv .ansible-venv
+          . .ansible-venv/bin/activate
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-input \
+            -r requirements.txt
+          ansible-galaxy collection install \
+            --requirements-file requirements.yml \
+            --collections-path ./.ansible/collections
+
+      - name: Configure the selected profile
+        env:
+          ANSIBLE_SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          set -euo pipefail
+          . .ansible-venv/bin/activate
+          python3 deployment/tools/run_configure.py

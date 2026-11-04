@@ -1,0 +1,80 @@
+---
+- name: Configure the selected VPS profile
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - ../deployment/tools/configure-profiles.json
+  vars:
+    configure_target_environment: >-
+      {{ lookup('ansible.builtin.env', 'CONFIGURE_TARGET_ENVIRONMENT') }}
+    configure_profile: >-
+      {{ lookup('ansible.builtin.env', 'CONFIGURE_PROFILE') }}
+    configure_check_mode: >-
+      {{ lookup('ansible.builtin.env', 'CONFIGURE_CHECK_MODE') }}
+  pre_tasks:
+    - name: Require the selected Environment GHCR token before connecting
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'GHCR_PULL_TOKEN') | length > 0
+        fail_msg: The selected Environment GHCR pull token is missing.
+      delegate_to: localhost
+
+    - name: Validate the Environment and profile on the controller
+      ansible.builtin.assert:
+        that:
+          - configure_target_environment in ['Staging', 'Production']
+          - configure_profile in configure_profiles
+          - configure_check_mode in ['true', 'false']
+        fail_msg: Configure inputs are invalid.
+        delegate_to: localhost
+
+    - name: Check that every selected role exists on the controller
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../roles/{{ item }}/tasks/main.yml"
+      loop: "{{ configure_profiles[configure_profile] }}"
+      loop_control:
+        label: "{{ item }}"
+      delegate_to: localhost
+      register: configure_profile_role_files
+
+    - name: Reject incomplete configure profiles on the controller
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+        fail_msg: >-
+          Configure profile {{ configure_profile }} is incomplete; required
+          role {{ item.item }} is missing.
+      loop: "{{ configure_profile_role_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      delegate_to: localhost
+
+    - name: Require all configure inventory facts on the controller
+      ansible.builtin.assert:
+        that:
+          - item in hostvars[inventory_hostname]
+          - hostvars[inventory_hostname][item] is not none
+          - hostvars[inventory_hostname][item] | string | length > 0
+        fail_msg: >-
+          Required configure inventory fact {{ item }} is missing for
+          {{ inventory_hostname }}.
+      loop: "{{ configure_required_inventory_facts }}"
+      loop_control:
+        label: "{{ item }}"
+      delegate_to: localhost
+
+    - name: Gather minimum target facts after controller preflight
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - min
+
+  tasks:
+    - name: Apply the exact selected role set
+      ansible.builtin.include_role:
+        name: "{{ item }}"
+        apply:
+          become: true
+      loop: "{{ configure_profiles[configure_profile] }}"
+      loop_control:
+        label: "{{ item }}"

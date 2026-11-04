@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+printf '%s\n' 'deployment entrypoint is not enabled yet.' >&2
+exit 1

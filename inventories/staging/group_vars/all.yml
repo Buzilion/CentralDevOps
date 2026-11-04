@@ -14,3 +14,12 @@ bootstrap_ssh_hostkey_args: >-
   -o UpdateHostKeys=no
   -o IdentitiesOnly=yes
 ansible_ssh_common_args: "{{ bootstrap_ssh_hostkey_args }}"
+docker_engine_package_version: "5:29.9.3-1~ubuntu.24.04~noble"
+docker_containerd_package_version: "2.4.2-3~ubuntu.24.04~noble"
+docker_buildx_package_version: "0.38.1-1~ubuntu.24.04~noble"
+docker_compose_plugin_package_version: "2.40.3-1~ubuntu.24.04~noble"
+docker_db_subnet_cidr: "10.251.0.0/24"
+docker_default_address_pools:
+  - base: "10.250.0.0/16"
+    size: 24
+deploy_runtime_public_key: ""

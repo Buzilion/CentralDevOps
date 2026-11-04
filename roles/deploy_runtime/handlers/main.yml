@@ -1,0 +1,7 @@
+---
+- name: Reload SSH after installing deploy audit policy
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+  listen: reload SSH deploy audit policy
+  when: not ansible_check_mode

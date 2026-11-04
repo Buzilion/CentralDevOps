@@ -1,0 +1,20 @@
+---
+- name: Reload systemd after Docker unit changes
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  listen: restart Docker after configuration changes
+  when: not ansible_check_mode or docker_service_available
+
+- name: Restart Docker socket with the reviewed listener policy
+  ansible.builtin.systemd_service:
+    name: docker.socket
+    state: restarted
+  listen: restart Docker after configuration changes
+  when: not ansible_check_mode or docker_service_available
+
+- name: Restart Docker with the reviewed daemon configuration
+  ansible.builtin.systemd_service:
+    name: docker
+    state: restarted
+  listen: restart Docker after configuration changes
+  when: not ansible_check_mode or docker_service_available

@@ -1,0 +1,71 @@
+{
+  "configure_profiles": {
+    "app": [
+      "common",
+      "users",
+      "ssh_hardening",
+      "firewall",
+      "docker",
+      "deploy_runtime",
+      "monitoring_agent",
+      "backup"
+    ],
+    "proxy": [
+      "common",
+      "users",
+      "ssh_hardening",
+      "firewall",
+      "docker",
+      "deploy_runtime",
+      "monitoring_agent",
+      "backup",
+      "nginx",
+      "certbot"
+    ],
+    "database": [
+      "common",
+      "users",
+      "ssh_hardening",
+      "firewall",
+      "docker",
+      "deploy_runtime",
+      "monitoring_agent",
+      "postgresql",
+      "backup"
+    ],
+    "monitoring": [
+      "common",
+      "users",
+      "ssh_hardening",
+      "firewall",
+      "docker",
+      "deploy_runtime",
+      "monitoring_agent",
+      "backup",
+      "collector"
+    ],
+    "all-in-one": [
+      "common",
+      "users",
+      "ssh_hardening",
+      "firewall",
+      "docker",
+      "deploy_runtime",
+      "monitoring_agent",
+      "backup",
+      "nginx",
+      "certbot",
+      "postgresql"
+    ]
+  },
+  "configure_required_inventory_facts": [
+    "bootstrap_admin_public_key",
+    "docker_engine_package_version",
+    "docker_containerd_package_version",
+    "docker_buildx_package_version",
+    "docker_compose_plugin_package_version",
+    "docker_db_subnet_cidr",
+    "docker_default_address_pools",
+    "deploy_runtime_public_key"
+  ]
+}

@@ -128,6 +128,16 @@
     }
   },
   "forbidden_in": {
+    ".github/workflows/configure-vps.yml": [
+      "ANSIBLE_VAULT_PASSWORD",
+      "BACKUP_RESTIC_PASSWORD",
+      "BACKUP_S3_ACCESS_KEY_ID",
+      "BACKUP_S3_SECRET_ACCESS_KEY",
+      "DEPLOY_RUNTIME_AGE_PRIVATE_KEY",
+      "DEPLOY_SSH_PRIVATE_KEY",
+      "MONITORING_GRAFANA_CLOUD_TOKEN",
+      "VPS_INITIAL_ACCESS_PASSWORD"
+    ],
     ".github/workflows/deploy-app.yml": [
       "ANSIBLE_SSH_PRIVATE_KEY",
       "VPS_INITIAL_ACCESS_PASSWORD",
