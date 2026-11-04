@@ -1,0 +1,383 @@
+---
+- name: Require the reviewed Ubuntu Server release
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version == docker_supported_ubuntu_release
+      - ansible_distribution_release == docker_supported_ubuntu_codename
+    fail_msg: Docker configuration supports Ubuntu Server 24.04 LTS only.
+
+- name: Require a reviewed Docker repository architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture in docker_architecture_map
+    fail_msg: The host architecture is not supported by the reviewed Docker repository.
+
+- name: Require pinned Docker package versions and network facts
+  ansible.builtin.assert:
+    that:
+      - docker_engine_package_version is defined
+      - docker_engine_package_version | string | length > 0
+      - docker_containerd_package_version is defined
+      - docker_containerd_package_version | string | length > 0
+      - docker_buildx_package_version is defined
+      - docker_buildx_package_version | string | length > 0
+      - docker_compose_plugin_package_version is defined
+      - docker_compose_plugin_package_version | string | length > 0
+      - docker_db_subnet_cidr is defined
+      - docker_db_subnet_cidr | string | length > 0
+      - docker_default_address_pools is defined
+      - docker_default_address_pools is sequence
+      - docker_default_address_pools is not string
+      - docker_default_address_pools | length > 0
+    fail_msg: Docker package versions and network facts are required.
+
+- name: Inspect installed package state before installing Docker
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Reject conflicting Docker implementations
+  ansible.builtin.assert:
+    that:
+      - item not in ansible_facts.packages
+    fail_msg: >-
+      Conflicting package {{ item }} is installed. Remove it through a
+      reviewed migration before configuring Docker Engine.
+  loop:
+    - docker.io
+    - containerd
+    - runc
+    - podman-docker
+
+- name: Create the apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the pinned Docker apt signing key
+  ansible.builtin.get_url:
+    url: "{{ docker_apt_signing_key_url }}"
+    dest: "{{ docker_apt_signing_key_path }}"
+    checksum: "{{ docker_apt_signing_key_checksum }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure the signed Docker Ubuntu apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ docker_architecture_map[ansible_architecture] }}
+      signed-by={{ docker_apt_signing_key_path }}]
+      {{ docker_apt_repository_url }}
+      {{ docker_supported_ubuntu_codename }}
+      stable
+    filename: "{{ docker_apt_repository_filename }}"
+    state: present
+    update_cache: false
+  register: docker_repository_config
+
+- name: Refresh apt package metadata before checking pinned versions
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ 0 if docker_repository_config.changed else 3600 }}"
+    lock_timeout: 300
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Check that the signed Docker repository publishes each pinned version
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/apt-cache
+      - madison
+      - "{{ item.name }}"
+  loop: "{{ docker_versioned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: docker_repository_versions
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Refuse package versions absent from the Docker repository
+  ansible.builtin.assert:
+    that:
+      - item.item.version in item.stdout
+      - "'download.docker.com' in item.stdout"
+    fail_msg: >-
+      Pinned package {{ item.item.name }}={{ item.item.version }} is not
+      available from the signed Docker Ubuntu repository.
+  loop: "{{ docker_repository_versions.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: not ansible_check_mode
+
+- name: Install the pinned Docker Engine, Compose and HTTP client packages
+  ansible.builtin.apt:
+    name:
+      - "docker-ce={{ docker_engine_package_version }}"
+      - "docker-ce-cli={{ docker_engine_package_version }}"
+      - "containerd.io={{ docker_containerd_package_version }}"
+      - "docker-buildx-plugin={{ docker_buildx_package_version }}"
+      - "docker-compose-plugin={{ docker_compose_plugin_package_version }}"
+      - python3-requests
+    state: present
+    install_recommends: false
+    lock_timeout: 300
+  when: not ansible_check_mode
+
+- name: Refresh installed package facts after Docker installation
+  ansible.builtin.package_facts:
+    manager: apt
+  when: not ansible_check_mode
+
+- name: Verify the installed Docker packages match their pinned versions
+  ansible.builtin.assert:
+    that:
+      - item.name in ansible_facts.packages
+      - >-
+        ansible_facts.packages[item.name] |
+        map(attribute='version') | list == [item.version]
+    fail_msg: >-
+      Installed package {{ item.name }} does not match the reviewed version
+      {{ item.version }}.
+  loop: "{{ docker_versioned_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not ansible_check_mode
+
+- name: Determine whether Docker can be safely inspected
+  ansible.builtin.set_fact:
+    docker_service_available: >-
+      {{
+        'docker-ce' in ansible_facts.packages and
+        'python3-requests' in ansible_facts.packages
+      }}
+
+- name: Explain Docker package and network check-mode limitations
+  ansible.builtin.debug:
+    msg: >-
+      Check mode does not refresh apt metadata, install packages, start Docker,
+      inspect its API, or create networks. Host-route and existing-network
+      validation runs before network creation during convergence.
+  when: ansible_check_mode and not docker_service_available
+
+- name: Ensure the Docker configuration directory exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure the Docker service drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure the Docker socket drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.socket.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the Docker daemon configuration
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart Docker after configuration changes
+
+- name: Restrict the Docker systemd socket to its Unix socket
+  ansible.builtin.template:
+    src: docker.socket.conf.j2
+    dest: /etc/systemd/system/docker.socket.d/zzzzzzzz-centraldevops.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart Docker after configuration changes
+
+- name: Pin the Docker systemd service to socket activation only
+  ansible.builtin.template:
+    src: docker.service.conf.j2
+    dest: /etc/systemd/system/docker.service.d/zzzzzzzz-centraldevops.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart Docker after configuration changes
+
+- name: Apply Docker daemon and systemd configuration before networking
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the Docker socket
+  ansible.builtin.systemd_service:
+    name: docker.socket
+    enabled: true
+    state: started
+  when: not ansible_check_mode or docker_service_available
+
+- name: Enable and start the Docker daemon
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  when: not ansible_check_mode or docker_service_available
+
+- name: Read the effective Docker service command
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - show
+      - docker.service
+      - --property=ExecStart
+      - --value
+  register: docker_effective_service_command
+  changed_when: false
+  check_mode: false
+  when: docker_service_available
+
+- name: Require Docker service socket activation without a TCP listener
+  ansible.builtin.assert:
+    that:
+      - "'-H fd://' in docker_effective_service_command.stdout"
+      - "'tcp://' not in docker_effective_service_command.stdout"
+    fail_msg: Docker service must use the reviewed Unix socket activation command.
+  when: docker_service_available
+
+- name: Read the effective Docker socket listeners
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - show
+      - docker.socket
+      - --property=Listen
+      - --value
+  register: docker_effective_socket_listeners
+  changed_when: false
+  check_mode: false
+  when: docker_service_available
+
+- name: Require the Docker API to listen only on its Unix socket
+  ansible.builtin.assert:
+    that:
+      - "'/run/docker.sock' in docker_effective_socket_listeners.stdout"
+      - "'tcp' not in docker_effective_socket_listeners.stdout | lower"
+    fail_msg: Docker API must not have a TCP listener.
+  when: docker_service_available
+
+- name: Inspect Docker socket ownership and permissions
+  ansible.builtin.stat:
+    path: /run/docker.sock
+  register: docker_socket_permissions
+  check_mode: false
+  when: docker_service_available
+
+- name: Require root and the Docker group to own the restricted socket
+  ansible.builtin.assert:
+    that:
+      - docker_socket_permissions.stat.exists
+      - docker_socket_permissions.stat.pw_name == "root"
+      - docker_socket_permissions.stat.gr_name == "docker"
+      - docker_socket_permissions.stat.mode == "0660"
+    fail_msg: Docker socket ownership must remain root:docker with mode 0660.
+  when: docker_service_available
+
+- name: Ensure the CentralDevOps library directory exists
+  ansible.builtin.file:
+    path: /usr/local/lib/centraldevops
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the Docker subnet validator
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deployment/tools/validate_docker_subnet.py"
+    dest: "{{ docker_subnet_validator_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Validate the database subnet against host routes and Docker networks
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ docker_subnet_validator_path }}"
+      - --subnet
+      - "{{ docker_db_subnet_cidr }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Defer live database subnet validation during check mode
+  ansible.builtin.debug:
+    msg: Host-route and existing-network validation will run before convergence.
+  when: ansible_check_mode
+
+- name: Ensure the shared edge network exists
+  community.docker.docker_network:
+    docker_host: unix:///run/docker.sock
+    name: edge
+    driver: bridge
+    enable_ipv6: false
+    state: present
+  when: not ansible_check_mode
+
+- name: Ensure the shared db network uses the fixed inventory subnet
+  community.docker.docker_network:
+    docker_host: unix:///run/docker.sock
+    name: db
+    driver: bridge
+    enable_ipv6: false
+    ipam_config:
+      - subnet: "{{ docker_db_subnet_cidr }}"
+    state: present
+  when: not ansible_check_mode
+
+- name: Inspect the shared edge network
+  community.docker.docker_network_info:
+    docker_host: unix:///run/docker.sock
+    name: edge
+  register: docker_edge_network
+  when: not ansible_check_mode
+
+- name: Verify the shared edge network is a local bridge
+  ansible.builtin.assert:
+    that:
+      - docker_edge_network.exists
+      - docker_edge_network.network is not none
+      - docker_edge_network.network.Name == "edge"
+      - docker_edge_network.network.Driver == "bridge"
+      - docker_edge_network.network.Scope == "local"
+    fail_msg: The edge network does not match the reviewed bridge contract.
+  when: not ansible_check_mode
+
+- name: Inspect the shared db network
+  community.docker.docker_network_info:
+    docker_host: unix:///run/docker.sock
+    name: db
+  register: docker_db_network
+  when: not ansible_check_mode
+
+- name: Verify the shared db network is a local bridge with the inventory subnet
+  ansible.builtin.assert:
+    that:
+      - docker_db_network.exists
+      - docker_db_network.network is not none
+      - docker_db_network.network.Name == "db"
+      - docker_db_network.network.Driver == "bridge"
+      - docker_db_network.network.Scope == "local"
+      - >-
+        docker_db_network.network.IPAM.Config |
+        selectattr('Subnet', 'equalto', docker_db_subnet_cidr) |
+        list | length == 1
+    fail_msg: The db network does not match its reviewed bridge subnet.
+  when: not ansible_check_mode

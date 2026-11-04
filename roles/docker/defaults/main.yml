@@ -1,0 +1,26 @@
+---
+docker_apt_repository_url: https://download.docker.com/linux/ubuntu
+docker_apt_signing_key_url: https://download.docker.com/linux/ubuntu/gpg
+docker_apt_signing_key_checksum: sha256:1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
+docker_apt_signing_key_path: /etc/apt/keyrings/docker.asc
+docker_apt_repository_filename: docker
+docker_supported_ubuntu_release: "24.04"
+docker_supported_ubuntu_codename: noble
+docker_architecture_map:
+  x86_64: amd64
+  aarch64: arm64
+  armv7l: armhf
+  ppc64le: ppc64le
+  s390x: s390x
+docker_subnet_validator_path: /usr/local/lib/centraldevops/validate_docker_subnet.py
+docker_versioned_packages:
+  - name: docker-ce
+    version: "{{ docker_engine_package_version }}"
+  - name: docker-ce-cli
+    version: "{{ docker_engine_package_version }}"
+  - name: containerd.io
+    version: "{{ docker_containerd_package_version }}"
+  - name: docker-buildx-plugin
+    version: "{{ docker_buildx_package_version }}"
+  - name: docker-compose-plugin
+    version: "{{ docker_compose_plugin_package_version }}"

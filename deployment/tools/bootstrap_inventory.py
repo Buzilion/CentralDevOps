@@ -87,11 +87,11 @@ def validate_dispatch(
         raise BootstrapValidationError("dispatch ref must identify a branch")
     if environment == "Production" and not ref.startswith("refs/heads/release/"):
         raise BootstrapValidationError(
-            "Production bootstrap is allowed only from release branches"
+            "Production dispatches are allowed only from release branches"
         )
     if environment == "Production" and ref == "refs/heads/release/":
         raise BootstrapValidationError(
-            "Production bootstrap is allowed only from release branches"
+            "Production dispatches are allowed only from release branches"
         )
 
     if (
@@ -436,7 +436,7 @@ def validate_inventory_target(
     return host
 
 
-def load_inventory(
+def load_inventory_document(
     root: Path,
     environment: str,
     *,
@@ -468,7 +468,7 @@ def load_inventory(
         )
     except OSError as exc:
         raise BootstrapValidationError(
-            "ansible-inventory is required to validate bootstrap targets"
+            "ansible-inventory is required to validate the selected inventory"
         ) from exc
     if result.returncode != 0:
         raise BootstrapValidationError(
@@ -480,8 +480,26 @@ def load_inventory(
         raise BootstrapValidationError(
             "selected environment inventory returned invalid JSON"
         ) from exc
+    if not isinstance(inventory, dict):
+        raise BootstrapValidationError(
+            "selected environment inventory returned an invalid structure"
+        )
+    return inventory
 
-    metadata = inventory.get("_meta") if isinstance(inventory, dict) else None
+
+def load_inventory(
+    root: Path,
+    environment: str,
+    *,
+    command_environment: Mapping[str, str] | None = None,
+) -> Mapping[str, Any]:
+    inventory = load_inventory_document(
+        root,
+        environment,
+        command_environment=command_environment,
+    )
+
+    metadata = inventory.get("_meta")
     hostvars = metadata.get("hostvars") if isinstance(metadata, dict) else None
     if not isinstance(hostvars, dict):
         raise BootstrapValidationError(

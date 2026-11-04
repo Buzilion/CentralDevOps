@@ -1,0 +1,365 @@
+---
+- name: Require the spec-03 deploy account and an Environment key
+  ansible.builtin.assert:
+    that:
+      - bootstrap_deploy_user is defined
+      - bootstrap_deploy_user == "cdo-deploy"
+      - deploy_runtime_public_key is defined
+      - deploy_runtime_public_key | string | length > 0
+      - deploy_runtime_public_key is match("^ssh-ed25519 ")
+    fail_msg: The reviewed cdo-deploy account and public key are required.
+
+- name: Require the deploy account created by spec 03
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ bootstrap_deploy_user }}"
+  check_mode: false
+
+- name: Remove supplementary groups from the deploy account
+  ansible.builtin.user:
+    name: "{{ bootstrap_deploy_user }}"
+    groups: []
+    append: false
+    state: present
+
+- name: Install only the matching Environment deploy public key
+  ansible.posix.authorized_key:
+    user: "{{ bootstrap_deploy_user }}"
+    path: "/home/{{ bootstrap_deploy_user }}/.ssh/authorized_keys"
+    key: "{{ deploy_runtime_public_key }}"
+    key_options: restrict
+    exclusive: true
+    manage_dir: true
+    state: present
+
+- name: Read deploy account group memberships
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/id
+      - -Gn
+      - "{{ bootstrap_deploy_user }}"
+  register: deploy_runtime_groups
+  changed_when: false
+  check_mode: false
+
+- name: Reject privileged or Docker group membership
+  ansible.builtin.assert:
+    that:
+      - item not in deploy_runtime_groups.stdout.split()
+    fail_msg: The deploy account must not belong to privileged group {{ item }}.
+  loop:
+    - root
+    - sudo
+    - wheel
+    - admin
+    - adm
+    - shadow
+    - disk
+    - lxd
+    - systemd-journal
+    - docker
+
+- name: Inspect the Docker socket
+  ansible.builtin.stat:
+    path: /run/docker.sock
+  register: deploy_runtime_docker_socket
+  check_mode: false
+
+- name: Require the Docker socket on a converged host
+  ansible.builtin.assert:
+    that:
+      - deploy_runtime_docker_socket.stat.exists
+    fail_msg: Docker must be installed before configuring the deploy runtime.
+  when: not ansible_check_mode
+
+- name: Verify the deploy account cannot read the Docker socket
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/sudo
+      - -u
+      - "{{ bootstrap_deploy_user }}"
+      - /usr/bin/test
+      - -r
+      - /run/docker.sock
+  register: deploy_runtime_socket_access
+  changed_when: false
+  failed_when: deploy_runtime_socket_access.rc not in [0, 1]
+  check_mode: false
+  when: deploy_runtime_docker_socket.stat.exists
+
+- name: Require Docker socket access to remain denied
+  ansible.builtin.assert:
+    that:
+      - deploy_runtime_socket_access.rc == 1
+    fail_msg: The deploy account can read the Docker socket.
+  when: deploy_runtime_docker_socket.stat.exists
+
+- name: Require the selected Environment GHCR pull token
+  ansible.builtin.assert:
+    that:
+      - lookup('ansible.builtin.env', 'GHCR_PULL_TOKEN') | length > 0
+    fail_msg: The selected Environment GHCR pull token is missing.
+
+- name: Inspect the root configuration directory
+  ansible.builtin.stat:
+    path: /root/.config
+  register: deploy_runtime_root_config
+
+- name: Refuse to use a symlinked root configuration directory
+  ansible.builtin.assert:
+    that:
+      - not deploy_runtime_root_config.stat.islnk
+    fail_msg: Refusing to place the GHCR token under a symlinked root directory.
+  when: deploy_runtime_root_config.stat.exists
+
+- name: Create the root configuration directory
+  ansible.builtin.file:
+    path: /root/.config
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Inspect the CentralDevOps secret directory
+  ansible.builtin.stat:
+    path: /root/.config/centraldevops
+  register: deploy_runtime_secret_directory
+
+- name: Refuse to use a symlinked CentralDevOps secret directory
+  ansible.builtin.assert:
+    that:
+      - not deploy_runtime_secret_directory.stat.islnk
+    fail_msg: Refusing to write the GHCR token through a symlink.
+  when: deploy_runtime_secret_directory.stat.exists
+
+- name: Create the root-only CentralDevOps secret directory
+  ansible.builtin.file:
+    path: /root/.config/centraldevops
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Inspect the GHCR token destination
+  ansible.builtin.stat:
+    path: /root/.config/centraldevops/ghcr-pull-token
+  register: deploy_runtime_ghcr_token_file
+
+- name: Refuse to replace a symlinked GHCR token destination
+  ansible.builtin.assert:
+    that:
+      - not deploy_runtime_ghcr_token_file.stat.islnk
+    fail_msg: Refusing to replace a symlinked GHCR token destination.
+  when: deploy_runtime_ghcr_token_file.stat.exists
+
+- name: Install the GHCR pull token without logging or diffing its value
+  ansible.builtin.copy:
+    content: "{{ lookup('ansible.builtin.env', 'GHCR_PULL_TOKEN') }}"
+    dest: /root/.config/centraldevops/ghcr-pull-token
+    owner: root
+    group: root
+    mode: "0600"
+    diff: false
+  no_log: true
+
+- name: Inspect the installed GHCR token permissions
+  ansible.builtin.stat:
+    path: /root/.config/centraldevops/ghcr-pull-token
+  register: deploy_runtime_ghcr_token_permissions
+  when: not ansible_check_mode
+
+- name: Require root-only GHCR token ownership and permissions
+  ansible.builtin.assert:
+    that:
+      - deploy_runtime_ghcr_token_permissions.stat.pw_name == "root"
+      - deploy_runtime_ghcr_token_permissions.stat.gr_name == "root"
+      - deploy_runtime_ghcr_token_permissions.stat.mode == "0600"
+  when: not ansible_check_mode
+
+- name: Verify the deploy account cannot read the GHCR token
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/sudo
+      - -u
+      - "{{ bootstrap_deploy_user }}"
+      - /usr/bin/test
+      - -r
+      - /root/.config/centraldevops/ghcr-pull-token
+  register: deploy_runtime_ghcr_token_access
+  changed_when: false
+  failed_when: deploy_runtime_ghcr_token_access.rc not in [0, 1]
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Require the deploy account to be denied GHCR token access
+  ansible.builtin.assert:
+    that:
+      - deploy_runtime_ghcr_token_access.rc == 1
+    fail_msg: The deploy account can read the GHCR pull token.
+  when: not ansible_check_mode
+
+- name: Install the deploy entrypoints as root-owned files
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deployment/scripts/{{ item }}"
+    dest: "/usr/local/sbin/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - centraldevops-deploy
+    - centraldevops-route
+  loop_control:
+    label: "{{ item }}"
+
+- name: Inspect the installed deploy entrypoints
+  ansible.builtin.stat:
+    path: "/usr/local/sbin/{{ item }}"
+  loop:
+    - centraldevops-deploy
+    - centraldevops-route
+  loop_control:
+    label: "{{ item }}"
+  register: deploy_runtime_entrypoints
+  when: not ansible_check_mode
+
+- name: Require root ownership and no deploy-writable entrypoints
+  ansible.builtin.assert:
+    that:
+      - item.stat.pw_name == "root"
+      - item.stat.gr_name == "root"
+      - item.stat.mode == "0755"
+    fail_msg: Deploy entrypoints must remain root-owned and non-deploy-writable.
+  loop: "{{ deploy_runtime_entrypoints.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not ansible_check_mode
+
+- name: Ensure the sudo command log exists with root-only permissions
+  ansible.builtin.file:
+    path: /var/log/centraldevops-sudo.log
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+    access_time: preserve
+    modification_time: preserve
+
+- name: Install logrotate for the deploy sudo audit log
+  ansible.builtin.apt:
+    name: logrotate
+    state: present
+    install_recommends: false
+
+- name: Configure rotation for the deploy sudo audit log
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/centraldevops-sudo
+    content: |
+      /var/log/centraldevops-sudo.log {
+          daily
+          rotate 30
+          missingok
+          notifempty
+          compress
+          delaycompress
+          create 0600 root root
+          su root root
+      }
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the SSH configuration drop-in directory
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Inspect the deploy SSH audit configuration
+  ansible.builtin.stat:
+    path: /etc/ssh/sshd_config.d/01-centraldevops-deploy-audit.conf
+  register: deploy_runtime_ssh_audit_file
+
+- name: Refuse to replace a symlinked deploy SSH audit configuration
+  ansible.builtin.assert:
+    that:
+      - not deploy_runtime_ssh_audit_file.stat.islnk
+    fail_msg: Refusing to replace a symlinked SSH audit configuration.
+  when: deploy_runtime_ssh_audit_file.stat.exists
+
+- name: Enable SSH public-key fingerprint logging
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-centraldevops-deploy-audit.conf
+    content: "LogLevel VERBOSE\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload SSH deploy audit policy
+
+- name: Validate the complete SSH daemon configuration
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -t
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Read the effective SSH logging policy
+  ansible.builtin.command:
+    argv:
+      - /usr/sbin/sshd
+      - -T
+  register: deploy_runtime_ssh_effective_config
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Require verbose SSH authentication auditing
+  ansible.builtin.assert:
+    that:
+      - "'loglevel verbose' in deploy_runtime_ssh_effective_config.stdout | lower"
+    fail_msg: SSH must log public-key fingerprints for deploy sessions.
+  when: not ansible_check_mode
+
+- name: Configure sudo for only the two fail-closed entrypoints
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/cdo-deploy
+    content: |
+      Defaults:cdo-deploy logfile="/var/log/centraldevops-sudo.log"
+      cdo-deploy ALL=(root) NOPASSWD: /usr/local/sbin/centraldevops-deploy, /usr/local/sbin/centraldevops-route
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Inspect the effective deploy sudo command list
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/sudo
+      - -l
+      - -U
+      - "{{ bootstrap_deploy_user }}"
+  register: deploy_runtime_sudo_grants
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Require exactly the two scoped deploy sudo commands
+  ansible.builtin.assert:
+    that:
+      - >-
+        deploy_runtime_sudo_grants.stdout |
+        regex_search(
+          '(?m)^\\s*\\(root\\) NOPASSWD: /usr/local/sbin/centraldevops-deploy,
+          /usr/local/sbin/centraldevops-route\\s*$'
+        ) is not none
+      - >-
+        deploy_runtime_sudo_grants.stdout_lines |
+        select('match', '^\\s*\\(') |
+        list | length == 1
+    fail_msg: >-
+      The deploy account must have sudo access only to the two
+      root-owned entrypoints.
+  when: not ansible_check_mode

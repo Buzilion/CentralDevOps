@@ -94,7 +94,8 @@ jobs:
             playbooks/enable-fail2ban-test.yml \
             playbooks/disable-fail2ban-test.yml \
             playbooks/enable-fail2ban.yml \
-            playbooks/disable-fail2ban.yml; do
+            playbooks/disable-fail2ban.yml \
+            playbooks/configure.yml; do
             ansible-playbook \
               --inventory inventories/staging/hosts.yml \
               --syntax-check "$playbook"
@@ -110,11 +111,14 @@ jobs:
             playbooks/disable-fail2ban-test.yml \
             playbooks/enable-fail2ban.yml \
             playbooks/disable-fail2ban.yml \
+            playbooks/configure.yml \
             roles/common \
             roles/users \
             roles/firewall \
             roles/ssh_hardening \
-            roles/fail2ban
+            roles/fail2ban \
+            roles/docker \
+            roles/deploy_runtime
           python -m unittest discover -s deployment/tools/tests
 
   naming-and-secrets:
