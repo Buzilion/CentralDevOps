@@ -39,9 +39,13 @@ Prove the full access transition and host-baseline assumptions on a disposable V
 - Source restriction outcome, measured memory reserve/budget, and brute-force-protection outcome are documented.
 - Temporary password, admin, and deploy test credentials are removed; no secret value is recorded.
 
+## Current acceptance disposition
+
+For the post-reset proof referenced by the runbook, the repository owner attests that the disposable-host hardening checks were completed manually. The concise attestation in `docs/runbooks/bootstrap-vps.md` is accepted for the prerequisite to begin local spec 04 implementation; detailed run artifacts are waived for this instance at the owner's direction. This does not reconstruct unrecorded per-check results, replace spec 04's runtime acceptance, or satisfy the `DISPOSABLE_VPS_PROOF_COMMIT` gate for non-disposable service-host operations. Future disposable-host proofs continue to use the acceptance criteria above.
+
 ## Verify
 
-Record timestamp, operator, host alias, commit SHA, workflow run URL, phase outcomes, observed ports, memory figures, and any exception in the runbook evidence table. Do not record credentials or private key material.
+For future proofs, record timestamp, operator, host alias, commit SHA, workflow run URL, phase outcomes, observed ports, memory figures, and any exception in the runbook evidence table. Do not record credentials or private key material. For the post-reset proof covered by the current disposition, refer to the operator attestation in the runbook and do not infer missing details.
 
 ## Out of scope
 
